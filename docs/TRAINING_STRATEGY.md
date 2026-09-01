@@ -2,34 +2,13 @@
 
 JagX AI will use staged training rather than attempting frontier scale immediately.
 
-## Stage A — Foundation pretraining
-Train an original causal language model on a carefully filtered corpus of text and code. Track provenance, licensing, language balance, duplication and contamination.
+1. Foundation pretraining: original causal language model on a provenance-aware corpus of text and code.
+2. Capability mixtures: QA, reasoning, mathematics, programming, web engineering, game development, graphics, security and tool-use data.
+3. Instruction/agent training: goals → plans → tools → observations → verified results.
+4. Engineering specialization: repository editing, build/test/fix, web apps and multiple game engines.
+5. Quality optimization: curated evaluation and preference data.
+6. Scale: increase parameters/context/compute only when benchmarks show model capacity is the bottleneck.
 
-## Stage B — Capability mixtures
-Add high-quality examples covering:
-- question answering
-- reasoning
-- mathematics
-- programming languages
-- software architecture
-- debugging
-- web development
-- game development
-- graphics
-- security engineering
-- tool-use traces
+External models may optionally act as teachers/evaluators during research, but their APIs and weights are never runtime dependencies.
 
-## Stage C — Instruction and agent training
-Train the model to transform goals into plans, select tools, inspect observations, produce changes and recover from failures.
-
-## Stage D — Engineering specialization
-Use task-specific datasets and evaluations for repository editing, build/test/fix, web applications, game engines and secure coding.
-
-## Stage E — Preference and quality optimization
-Use carefully constructed evaluation and preference data. External models may optionally act as teachers or evaluators during research, but their APIs and weights must never become runtime dependencies.
-
-## Stage F — Scale
-Increase parameters, context length and training compute only when empirical benchmarks show that the current bottleneck is model capacity rather than data or systems quality.
-
-## Data governance
-Every dataset should have source, license/provenance, processing version and contamination metadata. Do not blindly scrape copyrighted material and assume it is safe to train on.
+Every dataset must carry provenance, license/source metadata and processing version. Do not blindly scrape copyrighted material.
