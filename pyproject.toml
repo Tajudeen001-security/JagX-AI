@@ -11,3 +11,25 @@ dependencies = ["torch>=2.2", "numpy>=1.26", "tokenizers>=0.20", "safetensors>=0
 
 [project.optional-dependencies]
 dev = ["pytest>=8", "ruff>=0.6"]
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = [
+  "model*",
+  "tokenizer*",
+  "training*",
+  "inference*",
+  "runtime*",
+  "agent*",
+  "tools*",
+  "security*",
+  "data*",
+  "evaluation*",
+  "multimodal*",
+  "media*",
+  "safety*",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
