@@ -1,53 +1,31 @@
 # JagX AI Roadmap
 
 ## Phase 0 — Foundation
-- Repository structure
-- Original Transformer implementation
-- Tokenizer training
-- Local training loop
-- Local inference
-- Agent/tool interfaces
-- Safe workspace
-- Godot target
+Original Transformer, tokenizer, training loop, local inference, agent/tool interfaces, sandbox and general architecture.
 
-## Phase 1 — Data
-- Legally usable text corpus
-- Code corpus with license/provenance tracking
-- Instruction, debugging and game-development datasets
-- Deduplication and contamination checks
+## Phase 1 — Data and evaluation
+Provenance-aware text/code corpora, reasoning/math, web, game and defensive-security datasets; deduplication, contamination checks and broad benchmarks.
 
-## Phase 2 — Training
-- Packed batches
-- Mixed precision
-- Gradient accumulation
-- Distributed training
-- Checkpoint resume
-- Validation/perplexity tracking
+## Phase 2 — Training systems
+Packed sequences, mixed precision, gradient accumulation, checkpoint resume, validation, distributed training and reproducible experiments.
 
-## Phase 3 — Coding intelligence
-- Repository understanding
-- Code completion
-- Bug diagnosis
-- Patch generation
-- Build/test/fix loops
+## Phase 3 — General intelligence
+Language, knowledge, reasoning, mathematics and long-context understanding.
 
-## Phase 4 — Game intelligence
-- Godot scene understanding
-- GDScript/C# generation
-- 3D gameplay systems
-- FPS controllers
-- Weapons, health, enemies and navigation
-- Headless build and test repair
+## Phase 4 — Coding agent
+Repository understanding, planning, generation, debugging and build/test/fix loops.
 
-## Phase 5 — Agent
-- Planning
-- Tool selection
-- Long-running task recovery
-- Memory
-- Permissions and action logs
+## Phase 5 — Web engineering
+Full-stack applications, APIs, databases, authentication, real-time systems, animation and WebGL/WebGPU.
 
-## Phase 6 — Scale
-Increase model capacity only when data quality, evaluation and training stability justify it. Optimize inference and add quantization where useful.
+## Phase 6 — Game engineering
+Engine-independent concepts, Godot, Unreal, Unity, custom engines, 2D/3D, FPS, animation, physics and networking.
 
-## Permanent rule
-The deployed JagX AI must not require another AI provider.
+## Phase 7 — Defensive security
+Secure coding, threat modeling, vulnerability analysis, remediation and sandboxed testing.
+
+## Phase 8 — Multimodal and scale
+Image/audio/video understanding, larger context, larger model capacity and efficient inference.
+
+## Permanent principles
+No mandatory external AI runtime dependency. Measure capability with reproducible benchmarks. Keep providers/adapters replaceable. Use least-privilege tools.
