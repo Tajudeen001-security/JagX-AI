@@ -18,7 +18,7 @@ class ModelConfig:
     n_layers: int = 6
     n_heads: int = 6
     n_kv_heads: int | None = None  # None => multi-head (n_kv_heads == n_heads)
-    d_ff: int | None = None        # None => 4 * d_model (or 8/3 * d_model for SwiGLU)
+    d_ff: int | None = None  # None => 4 * d_model (or 8/3 * d_model for SwiGLU)
     dropout: float = 0.0
     rope_theta: float = 10000.0
     tie_embeddings: bool = True

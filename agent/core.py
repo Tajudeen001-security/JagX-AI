@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Any, Optional, Protocol
+from typing import Optional, Protocol
 
 from safety.prompt_injection import scan_prompt
 from tools.registry import ToolRegistry, ToolResult
@@ -96,9 +96,7 @@ class JagXAgent:
             if isinstance(value, str):
                 scan = scan_prompt(value)
                 if scan.flagged:
-                    raise PolicyError(
-                        f"prompt-injection patterns in tool args[{key}]: {','.join(scan.patterns)}"
-                    )
+                    raise PolicyError(f"prompt-injection patterns in tool args[{key}]: {','.join(scan.patterns)}")
 
     def execute_tool(self, name: str, arguments: dict) -> ToolResult:
         def policy_check(perm: str) -> None:
@@ -119,9 +117,7 @@ class JagXAgent:
         except KeyError as e:
             result = ToolResult(ok=False, error=str(e))
 
-        self.audit.append(
-            {"tool": name, "args_keys": list(arguments.keys()), "ok": result.ok, "error": result.error}
-        )
+        self.audit.append({"tool": name, "args_keys": list(arguments.keys()), "ok": result.ok, "error": result.error})
         return result
 
     def list_tools(self) -> list[str]:

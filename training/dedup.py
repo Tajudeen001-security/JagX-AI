@@ -1,8 +1,10 @@
 from __future__ import annotations
 import hashlib
 
+
 def content_hash(text: str) -> str:
     return hashlib.sha256(text.strip().encode("utf-8")).hexdigest()
+
 
 class ExactDeduplicator:
     def __init__(self):

@@ -107,6 +107,12 @@ class WorkspaceSandbox:
                 "stderr": stderr,
                 "duration_s": record["duration_s"],
             }
-        except subprocess.TimeoutExpired as e:
+        except subprocess.TimeoutExpired:
             self.audit_log.append({"op": "run_command", "command": parts, "error": "timeout", "timeout_s": timeout})
-            return {"ok": False, "returncode": -1, "stdout": "", "stderr": f"timeout after {timeout}s", "duration_s": timeout}
+            return {
+                "ok": False,
+                "returncode": -1,
+                "stdout": "",
+                "stderr": f"timeout after {timeout}s",
+                "duration_s": timeout,
+            }

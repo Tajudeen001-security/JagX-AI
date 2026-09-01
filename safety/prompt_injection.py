@@ -16,7 +16,10 @@ class InjectionScan:
 _PATTERNS: list[tuple[str, re.Pattern[str]]] = [
     ("ignore_previous", re.compile(r"(?i)ignore (all )?(previous|prior|above) (instructions|rules|prompts)")),
     ("system_override", re.compile(r"(?i)(you are now|new system prompt|override system)")),
-    ("reveal_secrets", re.compile(r"(?i)(print|reveal|show|dump).{0,40}(api[_-]?key|secret|password|token|credentials)")),
+    (
+        "reveal_secrets",
+        re.compile(r"(?i)(print|reveal|show|dump).{0,40}(api[_-]?key|secret|password|token|credentials)"),
+    ),
     ("disable_safety", re.compile(r"(?i)(disable|bypass|turn off).{0,30}(safety|guardrails|filter|policy)")),
     ("tool_exfil", re.compile(r"(?i)(exfiltrate|send (all )?files? to|curl .{0,40}http)")),
 ]

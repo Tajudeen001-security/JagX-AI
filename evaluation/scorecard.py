@@ -1,16 +1,18 @@
 from __future__ import annotations
 from dataclasses import dataclass
 
+
 @dataclass(frozen=True)
 class Score:
     name: str
     value: float
     higher_is_better: bool = True
 
+
 class ReleaseScorecard:
     def __init__(self, scores: list[Score]):
         if not scores:
-            raise ValueError('at least one score is required')
+            raise ValueError("at least one score is required")
         self.scores = tuple(scores)
 
     def summary(self) -> dict[str, float]:

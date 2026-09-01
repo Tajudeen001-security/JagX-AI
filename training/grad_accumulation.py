@@ -1,10 +1,12 @@
 from __future__ import annotations
 
+
 class GradientAccumulator:
     """Small utility for effective batches larger than device memory permits."""
+
     def __init__(self, steps: int):
         if steps < 1:
-            raise ValueError('accumulation steps must be positive')
+            raise ValueError("accumulation steps must be positive")
         self.steps = steps
         self.micro_steps = 0
 

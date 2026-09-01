@@ -111,7 +111,10 @@ class JagXTokenizer:
         truncation: bool = True,
         return_attention_mask: bool = True,
     ) -> dict[str, Any]:
-        encoded = [self.encode(t, add_special_tokens=add_special_tokens, max_length=max_length, truncation=truncation) for t in texts]
+        encoded = [
+            self.encode(t, add_special_tokens=add_special_tokens, max_length=max_length, truncation=truncation)
+            for t in texts
+        ]
         if max_length is None:
             max_length = max(len(e) for e in encoded) if encoded else 0
 

@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from typing import Any, Optional
 
-import torch
 
 from inference.loader import generate_text, load_model, load_tokenizer
 from model import JagXTransformer

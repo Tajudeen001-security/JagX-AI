@@ -4,6 +4,7 @@ import hashlib
 import json
 from pathlib import Path
 
+
 @dataclass(frozen=True)
 class DatasetManifest:
     name: str
@@ -23,12 +24,14 @@ class DatasetManifest:
         int(self.sha256, 16)
         return self
 
+
 def hash_file(path: str) -> str:
     digest = hashlib.sha256()
     with Path(path).open("rb") as handle:
         for chunk in iter(lambda: handle.read(1024 * 1024), b""):
             digest.update(chunk)
     return digest.hexdigest()
+
 
 def save_manifest(manifest: DatasetManifest, path: str) -> None:
     manifest.validate()

@@ -1,13 +1,16 @@
 from __future__ import annotations
 from dataclasses import dataclass
 
+
 @dataclass(frozen=True)
 class DatasetSource:
     name: str
     weight: float
 
+
 class DatasetMixture:
     """Deterministic normalized weights for composing training sources."""
+
     def __init__(self, sources: list[DatasetSource]):
         if not sources:
             raise ValueError("at least one dataset source is required")

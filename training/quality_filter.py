@@ -1,6 +1,6 @@
 from __future__ import annotations
 from dataclasses import dataclass
-import re
+
 
 @dataclass(frozen=True)
 class QualityPolicy:
@@ -8,6 +8,7 @@ class QualityPolicy:
     max_chars: int = 200_000
     min_alpha_ratio: float = 0.20
     reject_repeated_line_ratio: float = 0.50
+
 
 def score_text(text: str, policy: QualityPolicy = QualityPolicy()) -> float:
     if not text or len(text) < policy.min_chars or len(text) > policy.max_chars:
@@ -22,6 +23,7 @@ def score_text(text: str, policy: QualityPolicy = QualityPolicy()) -> float:
     if repeated >= policy.reject_repeated_line_ratio:
         score *= 0.25
     return max(0.0, min(1.0, score))
+
 
 def accept(text: str, policy: QualityPolicy = QualityPolicy()) -> bool:
     return score_text(text, policy) >= 0.5

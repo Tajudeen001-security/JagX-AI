@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-from typing import Iterator, Optional
+from typing import Iterator
 
 from data.pipeline import TextRecord, deduplicate, filter_record, write_jsonl
 

@@ -32,6 +32,7 @@ class AgentRuntime:
         sandbox = WorkspaceSandbox(workspace) if workspace else None
 
         if sandbox is not None:
+
             def read_file(args: dict) -> Any:
                 return sandbox.read(args["path"])
 

@@ -5,7 +5,6 @@ from pathlib import Path
 from typing import Optional
 
 from tools.sandbox import WorkspaceSandbox
-from tools.registry import ToolResult
 
 
 @dataclass

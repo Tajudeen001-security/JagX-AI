@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Callable
 
 from safety.prompt_injection import scan_prompt
 from security.command_guard import CommandGuard

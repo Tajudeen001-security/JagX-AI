@@ -2,6 +2,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from time import monotonic
 
+
 @dataclass
 class CircuitBreaker:
     failure_threshold: int = 5
@@ -10,13 +11,17 @@ class CircuitBreaker:
     opened_at: float | None = None
 
     def allow(self) -> bool:
-        if self.opened_at is None: return True
+        if self.opened_at is None:
+            return True
         if monotonic() - self.opened_at >= self.recovery_seconds:
-            self.opened_at = None; self.failures = 0; return True
+            self.opened_at = None
+            self.failures = 0
+            return True
         return False
 
     def success(self):
-        self.failures = 0; self.opened_at = None
+        self.failures = 0
+        self.opened_at = None
 
     def failure(self):
         self.failures += 1

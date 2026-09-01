@@ -6,6 +6,7 @@ from .dedup import ExactDeduplicator
 from .quality_filter import QualityPolicy, accept
 from .shuffle import deterministic_shuffle, shard
 
+
 @dataclass(frozen=True)
 class PipelineStats:
     received: int
@@ -13,13 +14,15 @@ class PipelineStats:
     rejected_quality: int
     rejected_duplicate: int
 
+
 class CorpusPipeline:
     def __init__(self, quality_policy: QualityPolicy = QualityPolicy()):
         self.quality_policy = quality_policy
         self.dedup = ExactDeduplicator()
 
-    def process(self, examples: list[TrainingExample], seed: int = 42,
-                rank: int = 0, world_size: int = 1) -> tuple[list[TrainingExample], PipelineStats]:
+    def process(
+        self, examples: list[TrainingExample], seed: int = 42, rank: int = 0, world_size: int = 1
+    ) -> tuple[list[TrainingExample], PipelineStats]:
         validate_batch(examples)
         ordered = deterministic_shuffle(examples, seed)
         local = shard(ordered, rank, world_size)

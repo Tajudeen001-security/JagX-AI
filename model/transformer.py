@@ -189,9 +189,7 @@ class JagXTransformer(nn.Module):
         self.cfg = cfg
 
         self.token_embedding = nn.Embedding(cfg.vocab_size, cfg.d_model)
-        self.rope = RotaryEmbedding(
-            cfg.d_model // cfg.n_heads, max_seq_len=cfg.max_seq_len, theta=cfg.rope_theta
-        )
+        self.rope = RotaryEmbedding(cfg.d_model // cfg.n_heads, max_seq_len=cfg.max_seq_len, theta=cfg.rope_theta)
         self.blocks = nn.ModuleList([Block(cfg) for _ in range(cfg.n_layers)])
         if cfg.use_rms_norm:
             self.norm = RMSNorm(cfg.d_model, eps=cfg.rms_norm_eps)
@@ -218,7 +216,9 @@ class JagXTransformer(nn.Module):
         labels: Optional[torch.Tensor] = None,
         past_key_values: Optional[list] = None,
         use_cache: bool = False,
-    ) -> Union[Tuple[torch.Tensor, Optional[torch.Tensor]], Tuple[torch.Tensor, Optional[torch.Tensor], Optional[list]]]:
+    ) -> Union[
+        Tuple[torch.Tensor, Optional[torch.Tensor]], Tuple[torch.Tensor, Optional[torch.Tensor], Optional[list]]
+    ]:
         """
         Returns:
             When use_cache=False (default): (logits, loss)

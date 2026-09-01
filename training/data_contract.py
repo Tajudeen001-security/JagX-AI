@@ -1,6 +1,7 @@
 from __future__ import annotations
 from dataclasses import dataclass
 
+
 @dataclass(frozen=True)
 class TrainingExample:
     text: str
@@ -19,6 +20,7 @@ class TrainingExample:
         if not 0.0 <= self.quality <= 1.0:
             raise ValueError("quality must be between 0 and 1")
         return self
+
 
 def validate_batch(examples: list[TrainingExample]) -> list[TrainingExample]:
     if not examples:

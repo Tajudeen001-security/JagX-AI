@@ -2,6 +2,7 @@ from dataclasses import asdict, dataclass
 import json
 from pathlib import Path
 
+
 @dataclass(frozen=True)
 class DatasetRecord:
     name: str

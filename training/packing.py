@@ -8,7 +8,11 @@ def pack_tokens(tokens: list[int], seq_len: int, drop_remainder: bool = True) ->
     if any(not isinstance(t, int) or t < 0 for t in tokens):
         raise ValueError("tokens must be non-negative integers")
     limit = len(tokens) - (len(tokens) % seq_len) if drop_remainder else len(tokens)
-    return [tokens[i:i + seq_len] for i in range(0, limit, seq_len) if len(tokens[i:i + seq_len]) == seq_len or not drop_remainder]
+    return [
+        tokens[i : i + seq_len]
+        for i in range(0, limit, seq_len)
+        if len(tokens[i : i + seq_len]) == seq_len or not drop_remainder
+    ]
 
 
 def causal_pairs(sequence: list[int]) -> tuple[list[int], list[int]]:
