@@ -20,22 +20,20 @@ class TrainerConfig:
     save_every: int = 100
     output_dir: str = "checkpoints"
     use_amp: bool = True
+    device: str | None = None
 
     def validate(self) -> "TrainerConfig":
         if self.max_steps <= 0 or self.grad_accum <= 0:
             raise ValueError("max_steps and grad_accum must be positive")
         if self.grad_clip <= 0 or self.log_every <= 0 or self.save_every <= 0:
             raise ValueError("grad_clip, log_every and save_every must be positive")
+        if self.device is not None and self.device not in {"cpu", "cuda", "mps"}:
+            raise ValueError("device must be cpu, cuda, mps, or None")
         return self
 
 
 class CausalLMTrainer:
-    """Model-agnostic PyTorch trainer for causal language-model objectives.
-
-    Batch contract: either a dict passed as kwargs, or a tensor/tuple.
-    The model may return a scalar loss, a (logits, loss) tuple, or an object/dict
-    containing ``loss``. This keeps JagX independent of any external provider.
-    """
+    """Model-agnostic PyTorch trainer for causal language-model objectives."""
 
     def __init__(
         self,
@@ -52,13 +50,28 @@ class CausalLMTrainer:
         self.ema = ema
         self.metrics = RunningMetrics()
         self.step = 0
+        requested = self.config.device
+        if requested == "cuda" and not torch.cuda.is_available():
+            raise RuntimeError("CUDA device requested but CUDA is unavailable")
+        if requested == "mps" and not torch.backends.mps.is_available():
+            raise RuntimeError("MPS device requested but MPS is unavailable")
+        self.device = torch.device(requested or ("cuda" if torch.cuda.is_available() else "cpu"))
+        self.model.to(self.device)
+
+    def _move_batch(self, batch: Any) -> Any:
+        if torch.is_tensor(batch):
+            return batch.to(self.device)
+        if isinstance(batch, dict):
+            return {key: value.to(self.device) if torch.is_tensor(value) else value for key, value in batch.items()}
+        if isinstance(batch, (tuple, list)):
+            return type(batch)(self._move_batch(value) for value in batch)
+        return batch
 
     @staticmethod
     def _loss(output: Any) -> torch.Tensor:
         if torch.is_tensor(output):
             return output
         if isinstance(output, (tuple, list)) and len(output) >= 2:
-            # (logits, loss) or (logits, loss, cache)
             candidate = output[1]
             if torch.is_tensor(candidate):
                 return candidate
@@ -92,11 +105,9 @@ class CausalLMTrainer:
                 except StopIteration:
                     iterator = iter(batches)
                     batch = next(iterator)
+                batch = self._move_batch(batch)
                 with autocast_context(enabled=self.config.use_amp):
-                    if isinstance(batch, dict):
-                        output = self.model(**batch)
-                    else:
-                        output = self.model(batch)
+                    output = self.model(**batch) if isinstance(batch, dict) else self.model(batch)
                     loss = self._loss(output)
                 if not torch.isfinite(loss):
                     raise FloatingPointError(f"non-finite loss at step {self.step + 1}")
@@ -111,8 +122,7 @@ class CausalLMTrainer:
             if self.ema is not None:
                 self.ema.update(self.model)
             self.step += 1
-            mean_loss = accumulated / self.config.grad_accum
-            self.metrics.update(mean_loss, tokens)
+            self.metrics.update(accumulated / self.config.grad_accum, tokens)
 
             if self.step % self.config.save_every == 0:
                 save_checkpoint(
