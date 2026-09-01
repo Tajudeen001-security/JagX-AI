@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import math
-from typing import Optional, Tuple
+from typing import Optional, Tuple, Union
 
 import torch
 from torch import nn
@@ -18,8 +18,6 @@ def _rotate_half(x: torch.Tensor) -> torch.Tensor:
 def apply_rotary_pos_emb(
     q: torch.Tensor, k: torch.Tensor, cos: torch.Tensor, sin: torch.Tensor
 ) -> Tuple[torch.Tensor, torch.Tensor]:
-    # q, k: (B, n_heads, T, head_dim)
-    # cos/sin: (1, 1, T, head_dim)
     q_embed = (q * cos) + (_rotate_half(q) * sin)
     k_embed = (k * cos) + (_rotate_half(k) * sin)
     return q_embed, k_embed
@@ -32,7 +30,6 @@ class RMSNorm(nn.Module):
         self.weight = nn.Parameter(torch.ones(dim))
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        # x: (..., dim)
         variance = x.pow(2).mean(dim=-1, keepdim=True)
         x = x * torch.rsqrt(variance + self.eps)
         return self.weight * x
@@ -47,8 +44,8 @@ class RotaryEmbedding(nn.Module):
 
     def _build_cache(self, seq_len: int) -> None:
         t = torch.arange(seq_len, device=self.inv_freq.device, dtype=self.inv_freq.dtype)
-        freqs = torch.outer(t, self.inv_freq)  # (T, dim/2)
-        emb = torch.cat((freqs, freqs), dim=-1)  # (T, dim)
+        freqs = torch.outer(t, self.inv_freq)
+        emb = torch.cat((freqs, freqs), dim=-1)
         self.register_buffer("cos_cached", emb.cos()[None, None, :, :], persistent=False)
         self.register_buffer("sin_cached", emb.sin()[None, None, :, :], persistent=False)
 
@@ -67,7 +64,7 @@ class CausalSelfAttention(nn.Module):
         self.n_heads = cfg.n_heads
         self.n_kv_heads = cfg.n_kv_heads
         self.head_dim = cfg.d_model // cfg.n_heads
-        self.n_rep = self.n_heads // self.n_kv_heads  # for GQA
+        self.n_rep = self.n_heads // self.n_kv_heads
 
         self.q_proj = nn.Linear(cfg.d_model, cfg.n_heads * self.head_dim, bias=False)
         self.k_proj = nn.Linear(cfg.d_model, cfg.n_kv_heads * self.head_dim, bias=False)
@@ -75,10 +72,7 @@ class CausalSelfAttention(nn.Module):
         self.o_proj = nn.Linear(cfg.d_model, cfg.d_model, bias=False)
         self.dropout = nn.Dropout(cfg.dropout)
 
-        # Causal mask is built on the fly for flexibility with different lengths
-
     def _repeat_kv(self, x: torch.Tensor) -> torch.Tensor:
-        # x: (B, n_kv_heads, T, head_dim) -> (B, n_heads, T, head_dim)
         if self.n_rep == 1:
             return x
         b, n_kv, t, d = x.shape
@@ -90,7 +84,6 @@ class CausalSelfAttention(nn.Module):
         x: torch.Tensor,
         cos: torch.Tensor,
         sin: torch.Tensor,
-        attn_mask: Optional[torch.Tensor] = None,
         past_kv: Optional[Tuple[torch.Tensor, torch.Tensor]] = None,
         use_cache: bool = False,
     ) -> Tuple[torch.Tensor, Optional[Tuple[torch.Tensor, torch.Tensor]]]:
@@ -100,8 +93,6 @@ class CausalSelfAttention(nn.Module):
         k = self.k_proj(x).view(b, t, self.n_kv_heads, self.head_dim).transpose(1, 2)
         v = self.v_proj(x).view(b, t, self.n_kv_heads, self.head_dim).transpose(1, 2)
 
-        # Apply RoPE only to the new tokens' positions
-        # When past_kv is present, cos/sin already cover the full sequence length
         q, k = apply_rotary_pos_emb(q, k, cos, sin)
 
         if past_kv is not None:
@@ -114,11 +105,9 @@ class CausalSelfAttention(nn.Module):
         k = self._repeat_kv(k)
         v = self._repeat_kv(v)
 
-        # Scaled dot-product attention
         scale = 1.0 / math.sqrt(self.head_dim)
-        scores = torch.matmul(q, k.transpose(-2, -1)) * scale  # (B, n_heads, T, T_total)
+        scores = torch.matmul(q, k.transpose(-2, -1)) * scale
 
-        # Causal mask
         t_total = scores.size(-1)
         causal = torch.tril(
             torch.ones(t, t_total, device=x.device, dtype=torch.bool),
@@ -126,12 +115,9 @@ class CausalSelfAttention(nn.Module):
         )
         scores = scores.masked_fill(~causal[None, None, :, :], torch.finfo(scores.dtype).min)
 
-        if attn_mask is not None:
-            scores = scores + attn_mask
-
         attn = F.softmax(scores, dim=-1)
         attn = self.dropout(attn)
-        out = torch.matmul(attn, v)  # (B, n_heads, T, head_dim)
+        out = torch.matmul(attn, v)
         out = out.transpose(1, 2).contiguous().view(b, t, -1)
         return self.o_proj(out), present
 
@@ -139,9 +125,9 @@ class CausalSelfAttention(nn.Module):
 class SwiGLUMLP(nn.Module):
     def __init__(self, cfg: ModelConfig):
         super().__init__()
-        self.w1 = nn.Linear(cfg.d_model, cfg.d_ff, bias=False)  # gate
-        self.w3 = nn.Linear(cfg.d_model, cfg.d_ff, bias=False)  # up
-        self.w2 = nn.Linear(cfg.d_ff, cfg.d_model, bias=False)  # down
+        self.w1 = nn.Linear(cfg.d_model, cfg.d_ff, bias=False)
+        self.w3 = nn.Linear(cfg.d_model, cfg.d_ff, bias=False)
+        self.w2 = nn.Linear(cfg.d_ff, cfg.d_model, bias=False)
         self.dropout = nn.Dropout(cfg.dropout)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
@@ -162,11 +148,13 @@ class MLP(nn.Module):
 class Block(nn.Module):
     def __init__(self, cfg: ModelConfig):
         super().__init__()
-        Norm = RMSNorm if cfg.use_rms_norm else nn.LayerNorm
-        eps = cfg.rms_norm_eps if cfg.use_rms_norm else 1e-5
-        self.norm1 = Norm(cfg.d_model, eps=eps) if cfg.use_rms_norm else Norm(cfg.d_model)
+        if cfg.use_rms_norm:
+            self.norm1 = RMSNorm(cfg.d_model, eps=cfg.rms_norm_eps)
+            self.norm2 = RMSNorm(cfg.d_model, eps=cfg.rms_norm_eps)
+        else:
+            self.norm1 = nn.LayerNorm(cfg.d_model)
+            self.norm2 = nn.LayerNorm(cfg.d_model)
         self.attn = CausalSelfAttention(cfg)
-        self.norm2 = Norm(cfg.d_model, eps=eps) if cfg.use_rms_norm else Norm(cfg.d_model)
         self.mlp = SwiGLUMLP(cfg) if cfg.use_swiglu else MLP(cfg)
 
     def forward(
@@ -205,9 +193,10 @@ class JagXTransformer(nn.Module):
             cfg.d_model // cfg.n_heads, max_seq_len=cfg.max_seq_len, theta=cfg.rope_theta
         )
         self.blocks = nn.ModuleList([Block(cfg) for _ in range(cfg.n_layers)])
-        Norm = RMSNorm if cfg.use_rms_norm else nn.LayerNorm
-        eps = cfg.rms_norm_eps if cfg.use_rms_norm else 1e-5
-        self.norm = Norm(cfg.d_model, eps=eps) if cfg.use_rms_norm else Norm(cfg.d_model)
+        if cfg.use_rms_norm:
+            self.norm = RMSNorm(cfg.d_model, eps=cfg.rms_norm_eps)
+        else:
+            self.norm = nn.LayerNorm(cfg.d_model)
         self.lm_head = nn.Linear(cfg.d_model, cfg.vocab_size, bias=False)
 
         if cfg.tie_embeddings:
@@ -229,10 +218,12 @@ class JagXTransformer(nn.Module):
         labels: Optional[torch.Tensor] = None,
         past_key_values: Optional[list] = None,
         use_cache: bool = False,
-    ) -> Tuple[torch.Tensor, Optional[torch.Tensor], Optional[list]]:
+    ) -> Union[Tuple[torch.Tensor, Optional[torch.Tensor]], Tuple[torch.Tensor, Optional[torch.Tensor], Optional[list]]]:
         """
         Returns:
-            logits, loss (optional), present_key_values (optional)
+            When use_cache=False (default): (logits, loss)
+            When use_cache=True: (logits, loss, present_key_values)
+        This keeps existing training/eval code working while supporting KV cache.
         """
         b, t = input_ids.shape
         if t > self.cfg.max_seq_len and past_key_values is None:
@@ -240,13 +231,11 @@ class JagXTransformer(nn.Module):
 
         x = self.token_embedding(input_ids)
 
-        # Position offset when using cache
         past_len = 0
         if past_key_values is not None and len(past_key_values) > 0 and past_key_values[0] is not None:
             past_len = past_key_values[0][0].shape[2]
 
         cos, sin = self.rope(past_len + t)
-        # Slice the rotary embeddings for the new tokens only
         cos = cos[:, :, past_len : past_len + t, :]
         sin = sin[:, :, past_len : past_len + t, :]
 
@@ -261,7 +250,6 @@ class JagXTransformer(nn.Module):
 
         loss = None
         if labels is not None:
-            # Shift for causal LM: predict next token
             shift_logits = logits[..., :-1, :].contiguous()
             shift_labels = labels[..., 1:].contiguous()
             loss = F.cross_entropy(
@@ -270,7 +258,9 @@ class JagXTransformer(nn.Module):
                 ignore_index=-100,
             )
 
-        return logits, loss, presents
+        if use_cache:
+            return logits, loss, presents
+        return logits, loss
 
     @torch.no_grad()
     def generate(
@@ -284,7 +274,6 @@ class JagXTransformer(nn.Module):
         stop_token_ids: Optional[list[int]] = None,
         use_cache: bool = True,
     ) -> torch.Tensor:
-        """Autoregressive generation with temperature, top-k, top-p and repetition penalty."""
         self.eval()
         stop_set = set(stop_token_ids or [])
         past = None
@@ -292,18 +281,18 @@ class JagXTransformer(nn.Module):
 
         for _ in range(max_new_tokens):
             if use_cache and past is not None:
-                # Only feed the last token when cache is active
                 model_input = generated[:, -1:]
             else:
                 model_input = generated[:, -self.cfg.max_seq_len :]
 
-            logits, _, past = self(model_input, past_key_values=past, use_cache=use_cache)
-            logits = logits[:, -1, :]  # (B, vocab)
+            if use_cache:
+                logits, _, past = self(model_input, past_key_values=past, use_cache=True)
+            else:
+                logits, _ = self(model_input)
+                past = None
 
-            # Temperature
-            logits = logits / max(temperature, 1e-5)
+            logits = logits[:, -1, :] / max(temperature, 1e-5)
 
-            # Repetition penalty
             if repetition_penalty != 1.0:
                 for b in range(generated.size(0)):
                     for token_id in set(generated[b].tolist()):
@@ -313,18 +302,14 @@ class JagXTransformer(nn.Module):
                         else:
                             logits[b, token_id] = val * repetition_penalty
 
-            # Top-k
             if top_k is not None and top_k > 0:
                 v, _ = torch.topk(logits, min(top_k, logits.size(-1)))
                 logits[logits < v[:, [-1]]] = float("-inf")
 
-            # Top-p (nucleus)
             if top_p is not None and 0.0 < top_p < 1.0:
                 sorted_logits, sorted_indices = torch.sort(logits, descending=True)
                 cumulative = torch.cumsum(F.softmax(sorted_logits, dim=-1), dim=-1)
-                # Remove tokens with cumulative probability above the threshold
                 sorted_indices_to_remove = cumulative > top_p
-                # Keep at least the first token
                 sorted_indices_to_remove[..., 1:] = sorted_indices_to_remove[..., :-1].clone()
                 sorted_indices_to_remove[..., 0] = False
                 indices_to_remove = sorted_indices_to_remove.scatter(1, sorted_indices, sorted_indices_to_remove)
