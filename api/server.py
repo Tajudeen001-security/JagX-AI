@@ -14,10 +14,19 @@ def health() -> dict[str, Any]:
     }
 
 
-class _Handler(BaseHTTPRequestHandler):
-    routes: dict[str, Callable[[], dict]] = {}
+def model_info() -> dict[str, Any]:
+    return {
+        "name": "jagx",
+        "runtime": "local",
+        "external_ai_api_required": False,
+    }
 
-    def log_message(self, format: str, *args) -> None:  # quieter tests
+
+class _Handler(BaseHTTPRequestHandler):
+    get_routes: dict[str, Callable[[], dict]] = {}
+    post_routes: dict[str, Callable[[dict], dict]] = {}
+
+    def log_message(self, format: str, *args) -> None:
         return
 
     def _json(self, code: int, payload: dict) -> None:
@@ -28,23 +37,72 @@ class _Handler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(body)
 
+    def _read_json(self) -> dict:
+        length = int(self.headers.get("Content-Length", 0))
+        raw = self.rfile.read(length) if length else b"{}"
+        try:
+            data = json.loads(raw.decode("utf-8") or "{}")
+        except json.JSONDecodeError:
+            return {}
+        return data if isinstance(data, dict) else {}
+
     def do_GET(self) -> None:  # noqa: N802
         path = urlparse(self.path).path
-        if path in self.routes:
-            self._json(200, self.routes[path]())
+        if path in self.get_routes:
+            self._json(200, self.get_routes[path]())
             return
         self._json(404, {"error": "not_found", "path": path})
 
+    def do_POST(self) -> None:  # noqa: N802
+        path = urlparse(self.path).path
+        if path not in self.post_routes:
+            self._json(404, {"error": "not_found", "path": path})
+            return
+        payload = self._read_json()
+        try:
+            result = self.post_routes[path](payload)
+            self._json(200, result)
+        except Exception as e:
+            self._json(400, {"error": str(e)})
 
-def create_app(extra_routes: Optional[dict[str, Callable[[], dict]]] = None) -> type[BaseHTTPRequestHandler]:
-    routes = {"/health": health, "/v1/health": health}
-    if extra_routes:
-        routes.update(extra_routes)
+
+def _default_generate(payload: dict) -> dict:
+    """Placeholder generate that does not call external APIs.
+
+    When a model is not bound, returns an explicit local-stub response so clients
+    can detect that weights are not loaded rather than silently proxying.
+    """
+    prompt = payload.get("prompt") or payload.get("input") or ""
+    max_tokens = int(payload.get("max_tokens") or payload.get("tokens") or 64)
+    return {
+        "object": "jagx.generation",
+        "backend": "local-stub",
+        "prompt_chars": len(str(prompt)),
+        "max_tokens": max_tokens,
+        "text": "",
+        "note": "Bind a loaded JagXTransformer via create_app(generate_fn=...) for real generation.",
+    }
+
+
+def create_app(
+    extra_get: Optional[dict[str, Callable[[], dict]]] = None,
+    extra_post: Optional[dict[str, Callable[[dict], dict]]] = None,
+    generate_fn: Optional[Callable[[dict], dict]] = None,
+) -> type[BaseHTTPRequestHandler]:
+    get_routes = {"/health": health, "/v1/health": health, "/v1/models": model_info}
+    post_routes = {"/v1/generate": generate_fn or _default_generate, "/v1/chat": generate_fn or _default_generate}
+    if extra_get:
+        get_routes.update(extra_get)
+    if extra_post:
+        post_routes.update(extra_post)
 
     class Handler(_Handler):
         pass
 
-    Handler.routes = routes
+    Handler.get_routes = get_routes
+    Handler.post_routes = post_routes
+    # backward compat for older tests looking at .routes
+    Handler.routes = get_routes
     return Handler
 
 
