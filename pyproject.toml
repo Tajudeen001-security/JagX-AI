@@ -1,0 +1,13 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "jagx-ai"
+version = "0.1.0"
+description = "Independent AI research and agent platform"
+requires-python = ">=3.10"
+dependencies = ["torch>=2.2", "numpy>=1.26", "tokenizers>=0.20", "safetensors>=0.4"]
+
+[project.optional-dependencies]
+dev = ["pytest>=8", "ruff>=0.6"]
