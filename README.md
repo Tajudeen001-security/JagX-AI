@@ -36,3 +36,5 @@ Configs: `configs/tiny.json`, `configs/small.json`, `configs/medium.json` (archi
 See `docs/ARCHITECTURE.md` and `docs/ROADMAP.md`.
 
 External models may be used only as optional research teachers/evaluators. They are never runtime dependencies.
+
+CI keeps linting, tests, and security checks as required gates.
