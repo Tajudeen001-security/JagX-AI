@@ -6,7 +6,7 @@ from typing import Any, Iterable
 import torch
 
 from .amp import autocast_context
-from .checkpoint import save_checkpoint
+from .checkpoint import load_checkpoint, save_checkpoint
 from .ema import EMA
 from .metrics import RunningMetrics
 
@@ -42,6 +42,7 @@ class CausalLMTrainer:
         scheduler: Any = None,
         config: TrainerConfig | None = None,
         ema: EMA | None = None,
+        resume_from: str | None = None,
     ):
         self.model = model
         self.optimizer = optimizer
@@ -57,6 +58,36 @@ class CausalLMTrainer:
             raise RuntimeError("MPS device requested but MPS is unavailable")
         self.device = torch.device(requested or ("cuda" if torch.cuda.is_available() else "cpu"))
         self.model.to(self.device)
+        if resume_from is not None:
+            self.resume(resume_from)
+
+    def resume(self, path: str) -> dict[str, Any]:
+        """Restore model, optimizer, scheduler, EMA, step, and metrics metadata."""
+        step, metadata = load_checkpoint(
+            path,
+            self.model,
+            self.optimizer,
+            self.scheduler,
+            map_location=self.device,
+            ema=self.ema,
+        )
+        self.step = step
+        self.metrics = RunningMetrics.from_snapshot(metadata)
+        return metadata
+
+    def save(self, path: str | None = None) -> str:
+        """Save the current training state and return its path."""
+        target = path or f"{self.config.output_dir}/step-{self.step}.pt"
+        save_checkpoint(
+            target,
+            self.model,
+            self.optimizer,
+            self.scheduler,
+            self.step,
+            metadata=self.metrics.snapshot(),
+            ema=self.ema,
+        )
+        return target
 
     def _move_batch(self, batch: Any) -> Any:
         if torch.is_tensor(batch):
@@ -125,13 +156,6 @@ class CausalLMTrainer:
             self.metrics.update(accumulated / self.config.grad_accum, tokens)
 
             if self.step % self.config.save_every == 0:
-                save_checkpoint(
-                    f"{self.config.output_dir}/step-{self.step}.pt",
-                    self.model,
-                    self.optimizer,
-                    self.scheduler,
-                    self.step,
-                    metadata=self.metrics.snapshot(),
-                )
+                self.save()
 
         return self.metrics.snapshot()
