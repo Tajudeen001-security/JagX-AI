@@ -1,17 +1,19 @@
 # JagX Training System
 
-The training system is designed to scale from local experiments to multi-GPU runs without changing the model interface.
+The training stack scales from CPU/single-GPU smoke tests toward distributed runs without changing the model interface.
 
-Planned components:
-- deterministic configuration and seeds
-- streaming datasets
-- sequence packing
-- gradient accumulation
-- mixed precision
-- checkpoint/resume
-- validation and perplexity
-- distributed data/model parallelism
-- artifact manifests
-- experiment/evaluation records
+## End-to-end pipeline
+1. Curate provenance-aware data.
+2. Normalize, filter and deduplicate.
+3. Train/load the JagX tokenizer.
+4. Tokenize and pack sequences.
+5. Instantiate a selected model scale.
+6. Train with AdamW, gradient accumulation, clipping and mixed precision.
+7. Validate loss/perplexity.
+8. Save resumable checkpoints.
+9. Run capability and regression benchmarks.
+10. Promote only verified checkpoints.
 
-A small model is used first to validate the complete pipeline. Frontier-scale training is a later compute-dependent stage.
+Implemented foundations include streaming datasets, sequence packing, configurable scaling, checkpoint/resume, mixed precision, and parameter-aware AdamW.
+
+Large-scale training requires appropriate compute; the repository remains independent of any particular cloud vendor or external AI provider.
