@@ -29,26 +29,61 @@ def normalize(text: str) -> str:
     return re.sub(r"\s+", " ", text).strip()
 
 
-def filter_record(record: TextRecord, min_chars: int = 20, max_chars: int = 1_000_000) -> bool:
+def filter_record(
+    record: TextRecord,
+    min_chars: int = 20,
+    max_chars: int = 1_000_000,
+) -> bool:
+    """Quality gate for bulk corpus preparation.
+
+    Default min_chars=20 is intentional for large-scale prepare pipelines.
+    Callers that need short valid examples (e.g. unit tests, micro-corpora)
+    should pass a lower min_chars or use is_viable_text().
+    """
     text = normalize(record.text)
     if len(text) < min_chars or len(text) > max_chars:
         return False
     if not any(ch.isalnum() for ch in text):
         return False
-    # Very crude quality heuristic
     if record.quality_score < 0.1:
         return False
     return True
 
 
+def is_viable_text(text: str, *, min_chars: int = 2) -> bool:
+    """Structural viability only: drop empty/near-empty and non-alnum noise.
+
+    Keeps short but real examples such as "hello world" while rejecting "x".
+    """
+    text = normalize(text)
+    if len(text) < min_chars:
+        return False
+    if not any(ch.isalnum() for ch in text):
+        return False
+    # Single-character alnum is almost always noise for training text.
+    if len(text) == 1:
+        return False
+    return True
+
+
 def deduplicate(records: list[TextRecord]) -> list[TextRecord]:
+    """Normalize whitespace, drop non-viable noise, and remove near-exact duplicates.
+
+    Does not apply the bulk quality min_chars=20 gate so valid short examples
+    are preserved. Use filter_record explicitly when preparing large corpora.
+    """
     seen: set[str] = set()
     result: list[TextRecord] = []
     for r in records:
         r.text = normalize(r.text)
-        if not filter_record(r) or r.fingerprint in seen:
+        if not is_viable_text(r.text):
             continue
-        seen.add(r.fingerprint)
+        if r.quality_score < 0.1:
+            continue
+        fp = r.fingerprint
+        if fp in seen:
+            continue
+        seen.add(fp)
         result.append(r)
     return result
 
