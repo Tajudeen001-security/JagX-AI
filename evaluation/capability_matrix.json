@@ -1,0 +1,10 @@
+{
+  "general": ["qa", "reasoning", "math", "long_context"],
+  "engineering": ["repo_edit", "debugging", "full_stack", "cross_platform"],
+  "realtime": ["websocket", "webrtc", "synchronization", "offline_recovery"],
+  "web": ["responsive_ui", "animation", "webgl", "webgpu"],
+  "games": ["godot", "unreal", "unity", "generic_3d", "fps", "networking"],
+  "security": ["secure_coding", "threat_modeling", "vulnerability_remediation"],
+  "agent": ["tool_use", "checkpointing", "recovery", "verification"],
+  "multimodal": ["image", "audio", "video", "structured_data"]
+}
