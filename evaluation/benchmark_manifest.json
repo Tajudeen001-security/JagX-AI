@@ -1,0 +1,17 @@
+{
+  "version": 1,
+  "suites": [
+    {"name": "reasoning", "metric": "accuracy"},
+    {"name": "coding", "metric": "pass_rate"},
+    {"name": "instruction_following", "metric": "success_rate"},
+    {"name": "tool_use", "metric": "task_success"},
+    {"name": "multimodal", "metric": "task_success"},
+    {"name": "safety", "metric": "violation_rate", "lower_is_better": true},
+    {"name": "security", "metric": "attack_resistance", "lower_is_better": false}
+  ],
+  "release_gate": {
+    "require_all_suites": true,
+    "allow_safety_regression": false,
+    "allow_security_regression": false
+  }
+}
