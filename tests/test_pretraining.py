@@ -1,8 +1,8 @@
 import torch
 
+from training.data_contract import TrainingExample
 from training.pretraining import PretrainingConfig, packed_batches, prepare_examples
 from training.trainer import CausalLMTrainer, TrainerConfig
-from training.data_contract import TrainingExample
 
 
 class FakeTokenizer:
@@ -39,9 +39,6 @@ def test_packed_batches_fixed_shape_and_labels():
 
 
 def test_trainer_moves_batches_to_device_and_learns():
-    model = torch.nn.Linear(1, 1)
-    optimizer = torch.optim.SGD(model.parameters(), lr=0.2)
-
     class TinyModel(torch.nn.Module):
         def __init__(self):
             super().__init__()
