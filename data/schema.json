@@ -1,0 +1,7 @@
+{
+  "record_type": "training_example",
+  "required": ["id", "text", "source", "license", "domain", "split"],
+  "optional": ["language", "quality", "provenance", "created_at", "processing_version", "contamination_status"],
+  "splits": ["train", "validation", "test"],
+  "domains": ["general", "reasoning", "math", "code", "web", "apps", "realtime", "games", "security", "science", "documents"]
+}
