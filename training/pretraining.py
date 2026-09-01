@@ -33,11 +33,8 @@ class PretrainingConfig:
         return self
 
 
-def token_stream(
-    examples: Iterable[TrainingExample],
-    tokenizer: JagXTokenizer,
-) -> Iterator[int]:
-    """Yield document-tokenized ids with an EOS boundary between documents."""
+def token_stream(examples: Iterable[TrainingExample], tokenizer: JagXTokenizer) -> Iterator[int]:
+    """Yield tokenized documents with an EOS boundary between documents."""
     for example in examples:
         ids = tokenizer.encode(example.text, add_special_tokens=False)
         if ids:
@@ -46,14 +43,13 @@ def token_stream(
 
 
 def packed_batches(
-    examples: Iterable[TrainingExample],
-    tokenizer: JagXTokenizer,
-    config: PretrainingConfig,
+    examples: Iterable[TrainingExample], tokenizer: JagXTokenizer, config: PretrainingConfig
 ) -> Iterator[dict[str, torch.Tensor]]:
     """Pack documents into fixed-length next-token-prediction batches."""
     cfg = config.validate()
     buffer: list[int] = []
     batch: list[list[int]] = []
+    pad = tokenizer.pad_token_id
 
     for token_id in token_stream(examples, tokenizer):
         buffer.append(token_id)
@@ -65,8 +61,10 @@ def packed_batches(
                 yield {"input_ids": values, "labels": values.clone()}
                 batch.clear()
 
+    if not cfg.drop_remainder and buffer:
+        batch.append(buffer + [pad] * (cfg.seq_len - len(buffer)))
+
     if not cfg.drop_remainder and batch:
-        pad = tokenizer.pad_token_id
         while len(batch) < cfg.batch_size:
             batch.append([pad] * cfg.seq_len)
         values = torch.tensor(batch, dtype=torch.long)
@@ -76,13 +74,9 @@ def packed_batches(
 
 
 def prepare_examples(
-    examples: list[TrainingExample],
-    *,
-    seed: int = 42,
-    rank: int = 0,
-    world_size: int = 1,
+    examples: list[TrainingExample], *, seed: int = 42, rank: int = 0, world_size: int = 1
 ) -> tuple[list[TrainingExample], object]:
-    """Apply the validated corpus quality, deduplication and sharding pipeline."""
+    """Apply quality filtering, deduplication and deterministic sharding."""
     return CorpusPipeline().process(examples, seed=seed, rank=rank, world_size=world_size)
 
 
