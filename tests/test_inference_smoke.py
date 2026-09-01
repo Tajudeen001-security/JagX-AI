@@ -43,7 +43,7 @@ def test_inference_loader_and_generate():
         root = Path(d)
         ckpt = root / "m.pt"
         torch.save({"model": model.state_dict(), "config": cfg.to_dict()}, ckpt)
-        tok = _tiny_tokenizer(root)
+        _tiny_tokenizer(root)
 
         loaded, loaded_cfg = load_model(ckpt)
         assert loaded_cfg.d_model == 32
