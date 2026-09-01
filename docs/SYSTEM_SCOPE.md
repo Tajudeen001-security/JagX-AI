@@ -2,60 +2,20 @@
 
 JagX AI is a general-purpose frontier-model research project, not a gaming-only model.
 
-## Core capability families
+## Capability families
+- General knowledge, question answering, reasoning and mathematics
+- Repository-scale software engineering
+- Complex full-stack web applications and APIs
+- Highly interactive and animated web experiences
+- 2D/3D, realistic and stylized game development
+- Godot, Unreal Engine, Unity and generic/custom engines
+- Graphics, animation, WebGL/WebGPU
+- Defensive security engineering
+- Tool use, research and long-running engineering tasks
+- Document and multimodal capabilities as the system grows
 
-1. General knowledge and question answering
-2. Reasoning and mathematics
-3. Software engineering
-4. Complex web applications and APIs
-5. UI/UX and highly animated web experiences
-6. Game development across engines and frameworks
-7. 2D, 3D, realistic and stylized game systems
-8. Security engineering and defensive security analysis
-9. Tool use and controlled computer interaction
-10. Document understanding and transformation
-11. Research, planning and long-running engineering tasks
+## Principle
+Godot is only the first game-engine adapter. The core model must learn transferable engineering concepts rather than being tied to one engine.
 
-## Game-engine independence
-
-Godot is the first integration target because it is accessible for testing, but the architecture must not encode Godot-specific assumptions into the core model.
-
-Planned adapters include:
-- Godot
-- Unreal Engine
-- Unity
-- Generic custom engines
-- Web/game technologies such as WebGL/WebGPU
-
-The game agent should reason about game concepts (scene graphs, entities, components, physics, rendering, animation, input, networking, assets and builds) and then translate those concepts into the selected engine.
-
-## Web-development scope
-
-JagX AI should eventually handle:
-- frontend applications
-- backend services
-- databases
-- authentication
-- APIs
-- real-time systems
-- responsive UI
-- animations
-- WebGL/WebGPU experiences
-- testing and deployment workflows
-
-## Security scope
-
-Security capability is intended for defensive engineering:
-- secure code generation
-- vulnerability identification
-- dependency analysis
-- threat modeling
-- secure architecture
-- sandboxed security testing
-- remediation and regression testing
-
-High-impact or destructive actions must remain behind explicit permissions and isolated environments.
-
-## Frontier objective
-
-The long-term objective is a highly capable general model and agent. Capability is measured by reproducible benchmarks rather than by marketing claims. Model scale will increase only when data quality, training stability, evaluation and available compute justify it.
+## Security
+Security capability focuses on secure architecture, threat modeling, vulnerability discovery, remediation and isolated defensive testing. High-impact actions remain permission-scoped.
