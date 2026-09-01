@@ -1,19 +1,26 @@
 # JagX AI Architecture
 
-## Independence boundary
-The learned model lives in model/. Core inference must not require an external AI API.
+JagX AI is a general-purpose model plus agent platform.
 
 ## Layers
-- Model: neural network and tokenizer.
-- Training: datasets, packing, optimization and checkpoints.
-- Inference: local generation.
-- Agent: planning and action orchestration.
-- Tools: sandbox, files, build/test and optional network tools.
-- Games: Godot generation and validation.
-- Evaluation: deterministic benchmarks and regression tests.
+1. Model — learned language/reasoning representation.
+2. Tokenizer — model-owned tokenization.
+3. Training — reproducible data and optimization.
+4. Inference — local/provider-independent runtime.
+5. Agent — planning and long-running task orchestration.
+6. Tools — sandboxed files, shell, build/test and optional network tools.
+7. Adapters — web, game engines and other domains.
+8. Memory — project/task state.
+9. Evaluation — capability and safety benchmarks.
 
-## Optional providers
-If teacher/evaluator integrations are added later, they must live behind optional adapters. Removing them must not break inference or the agent.
+## Independence
+No core module may require another AI provider or proprietary inference API. Optional external teacher/evaluator adapters must be removable without breaking inference.
+
+## Generalization
+Domain adapters translate general intent into implementation-specific operations, preventing a Godot-only, web-only or coding-only design.
 
 ## Compute
-CUDA is an acceleration option, not a hard dependency. Training jobs should remain portable across compatible PyTorch environments.
+Training/inference backends are replaceable. CUDA is acceleration, not a hard architectural dependency.
+
+## Security
+Generated code runs in isolated workspaces. Network, shell and deployment permissions are explicit and least-privilege.
