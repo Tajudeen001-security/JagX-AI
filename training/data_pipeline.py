@@ -3,7 +3,7 @@ from dataclasses import dataclass
 
 from .data_contract import TrainingExample, validate_batch
 from .dedup import ExactDeduplicator
-from .quality_filter import QualityPolicy, accept, score_text
+from .quality_filter import QualityPolicy, accept
 from .shuffle import deterministic_shuffle, shard
 
 @dataclass(frozen=True)
@@ -18,13 +18,8 @@ class CorpusPipeline:
         self.quality_policy = quality_policy
         self.dedup = ExactDeduplicator()
 
-    def process(
-        self,
-        examples: list[TrainingExample],
-        seed: int = 42,
-        rank: int = 0,
-        world_size: int = 1,
-    ) -> tuple[list[TrainingExample], PipelineStats]:
+    def process(self, examples: list[TrainingExample], seed: int = 42,
+                rank: int = 0, world_size: int = 1) -> tuple[list[TrainingExample], PipelineStats]:
         validate_batch(examples)
         ordered = deterministic_shuffle(examples, seed)
         local = shard(ordered, rank, world_size)
@@ -40,9 +35,4 @@ class CorpusPipeline:
                 continue
             output.append(example)
 
-        return output, PipelineStats(
-            received=len(local),
-            accepted=len(output),
-            rejected_quality=quality_rejected,
-            rejected_duplicate=duplicate_rejected,
-        )
+        return output, PipelineStats(len(local), len(output), quality_rejected, duplicate_rejected)
