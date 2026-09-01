@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Iterable, Any
+from typing import Any, Iterable
 
 import torch
 
@@ -32,14 +32,19 @@ class TrainerConfig:
 class CausalLMTrainer:
     """Model-agnostic PyTorch trainer for causal language-model objectives.
 
-    The batch contract is intentionally small: a batch is passed to the model,
-    and the model must return either a scalar loss or an object/dict containing
-    ``loss``. This keeps JagX independent of any external model provider.
+    Batch contract: either a dict passed as kwargs, or a tensor/tuple.
+    The model may return a scalar loss, a (logits, loss) tuple, or an object/dict
+    containing ``loss``. This keeps JagX independent of any external provider.
     """
 
-    def __init__(self, model: torch.nn.Module, optimizer: torch.optim.Optimizer,
-                 scheduler: Any = None, config: TrainerConfig | None = None,
-                 ema: EMA | None = None):
+    def __init__(
+        self,
+        model: torch.nn.Module,
+        optimizer: torch.optim.Optimizer,
+        scheduler: Any = None,
+        config: TrainerConfig | None = None,
+        ema: EMA | None = None,
+    ):
         self.model = model
         self.optimizer = optimizer
         self.scheduler = scheduler
@@ -52,11 +57,16 @@ class CausalLMTrainer:
     def _loss(output: Any) -> torch.Tensor:
         if torch.is_tensor(output):
             return output
+        if isinstance(output, (tuple, list)) and len(output) >= 2:
+            # (logits, loss) or (logits, loss, cache)
+            candidate = output[1]
+            if torch.is_tensor(candidate):
+                return candidate
         if isinstance(output, dict) and "loss" in output:
             return output["loss"]
         if hasattr(output, "loss"):
             return output.loss
-        raise TypeError("model output must be a loss tensor or contain a 'loss' field")
+        raise TypeError("model output must be a loss tensor, (logits, loss), or contain a 'loss' field")
 
     @staticmethod
     def _tokens(batch: Any) -> int:
@@ -65,11 +75,12 @@ class CausalLMTrainer:
                 value = batch.get(key)
                 if torch.is_tensor(value):
                     return int(value.numel())
+        if torch.is_tensor(batch):
+            return int(batch.numel())
         return 0
 
     def train(self, batches: Iterable[Any]) -> dict:
         self.model.train()
-        self.optimizer.zero_grad(set_to_none=True)
         iterator = iter(batches)
         while self.step < self.config.max_steps:
             self.optimizer.zero_grad(set_to_none=True)
@@ -82,7 +93,11 @@ class CausalLMTrainer:
                     iterator = iter(batches)
                     batch = next(iterator)
                 with autocast_context(enabled=self.config.use_amp):
-                    loss = self._loss(self.model(**batch) if isinstance(batch, dict) else self.model(batch))
+                    if isinstance(batch, dict):
+                        output = self.model(**batch)
+                    else:
+                        output = self.model(batch)
+                    loss = self._loss(output)
                 if not torch.isfinite(loss):
                     raise FloatingPointError(f"non-finite loss at step {self.step + 1}")
                 (loss / self.config.grad_accum).backward()
@@ -102,7 +117,10 @@ class CausalLMTrainer:
             if self.step % self.config.save_every == 0:
                 save_checkpoint(
                     f"{self.config.output_dir}/step-{self.step}.pt",
-                    self.model, self.optimizer, self.scheduler, self.step,
+                    self.model,
+                    self.optimizer,
+                    self.scheduler,
+                    self.step,
                     metadata=self.metrics.snapshot(),
                 )
 
