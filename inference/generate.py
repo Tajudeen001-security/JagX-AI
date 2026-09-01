@@ -1,36 +1,36 @@
+from __future__ import annotations
+
 import argparse
-import torch
-from model import ModelConfig, JagXTransformer
-from tokenizers import Tokenizer
 
-p = argparse.ArgumentParser()
-p.add_argument("--checkpoint", required=True)
-p.add_argument("--tokenizer", required=True)
-p.add_argument("--prompt", required=True)
-p.add_argument("--tokens", type=int, default=128)
-p.add_argument("--temperature", type=float, default=0.8)
-p.add_argument("--top-k", type=int, default=50)
-p.add_argument("--top-p", type=float, default=0.95)
-a = p.parse_args()
+from inference.loader import generate_text, load_model, load_tokenizer
 
-# Prefer weights_only for safety when loading trusted artifacts.
-ckpt = torch.load(a.checkpoint, map_location="cpu", weights_only=True)
-cfg_data = ckpt.get("config", {})
-if isinstance(cfg_data, dict):
-    cfg = ModelConfig.from_dict(cfg_data)
-else:
-    cfg = ModelConfig(**cfg_data) if hasattr(cfg_data, "__dict__") else ModelConfig()
-model = JagXTransformer(cfg)
-model.load_state_dict(ckpt["model"])
-model.eval()
 
-tok = Tokenizer.from_file(a.tokenizer)
-x = torch.tensor([tok.encode(a.prompt).ids], dtype=torch.long)
-y = model.generate(
-    x,
-    max_new_tokens=a.tokens,
-    temperature=a.temperature,
-    top_k=a.top_k,
-    top_p=a.top_p,
-)[0].tolist()
-print(tok.decode(y))
+def main() -> None:
+    p = argparse.ArgumentParser(description="JagX local inference (no external AI API)")
+    p.add_argument("--checkpoint", required=True)
+    p.add_argument("--tokenizer", required=True, help="tokenizer.json or directory containing it")
+    p.add_argument("--prompt", required=True)
+    p.add_argument("--tokens", type=int, default=64)
+    p.add_argument("--temperature", type=float, default=0.8)
+    p.add_argument("--top-k", type=int, default=50)
+    p.add_argument("--top-p", type=float, default=0.95)
+    p.add_argument("--repetition-penalty", type=float, default=1.0)
+    a = p.parse_args()
+
+    model, _ = load_model(a.checkpoint)
+    tok = load_tokenizer(a.tokenizer)
+    text = generate_text(
+        model,
+        tok,
+        a.prompt,
+        max_new_tokens=a.tokens,
+        temperature=a.temperature,
+        top_k=a.top_k,
+        top_p=a.top_p,
+        repetition_penalty=a.repetition_penalty,
+    )
+    print(text)
+
+
+if __name__ == "__main__":
+    main()
