@@ -6,8 +6,13 @@ from runtime.cache import BoundedCache
 
 def test_command_guard_blocks_composition():
     guard = CommandGuard()
-    assert guard.validate('python --version')[0] == 'python'
-    for command in ('python x && echo bad', 'python x > out', 'python x | cat'):
+    assert guard.validate("python --version")[0] == "python"
+    for command in (
+        "python x && echo bad",
+        "python x > out",
+        "python x | cat",
+        'python -c "print(1)"',
+    ):
         try:
             guard.validate(command)
         except PermissionError:
@@ -33,12 +38,14 @@ def test_limits():
         except ValueError:
             pass
         else:
-            raise AssertionError('limit was not enforced')
+            raise AssertionError("limit was not enforced")
 
 
 def test_cache_is_bounded():
     cache = BoundedCache(2)
-    cache.put('a', 1); cache.put('b', 2); cache.put('c', 3)
+    cache.put("a", 1)
+    cache.put("b", 2)
+    cache.put("c", 3)
     assert len(cache) == 2
-    assert cache.get('a') is None
-    assert cache.get('c') == 3
+    assert cache.get("a") is None
+    assert cache.get("c") == 3

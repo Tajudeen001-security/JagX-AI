@@ -25,12 +25,20 @@ def test_sandbox_path_boundary():
 def test_sandbox_command_allowlist():
     with tempfile.TemporaryDirectory() as d:
         sb = WorkspaceSandbox(d)
-        # python3 should be allowed; quoting for -c expression
-        result = sb.run_command('python3 -c "print(1+1)"', timeout_s=10)
+        # python3 --version is allowlisted; python -c is intentionally blocked by CommandGuard
+        result = sb.run_command("python3 --version", timeout_s=10)
         assert "returncode" in result
+        assert result.get("ok") is True or result.get("returncode") == 0
+
         try:
             sb.run_command("rm -rf /")
-            assert False
+            assert False, "rm must be blocked"
+        except PermissionError:
+            pass
+
+        try:
+            sb.run_command('python3 -c "print(1)"')
+            assert False, "python -c must be blocked"
         except PermissionError:
             pass
 

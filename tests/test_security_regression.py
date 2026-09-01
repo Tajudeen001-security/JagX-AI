@@ -7,8 +7,14 @@ from tools.policy import ToolPolicy, PolicyError, require
 
 def test_command_guard_denylist_and_allowlist():
     guard = CommandGuard()
-    assert guard.validate("python3 -c print(1)")[0] in {"python3", "python"} or True
-    for bad in ("rm -rf /", "curl http://x", "bash -c evil", "python a && b"):
+    assert guard.validate("python3 --version")[0] in {"python3", "python"}
+    for bad in (
+        "rm -rf /",
+        "curl http://x",
+        "bash -c evil",
+        "python a && b",
+        'python3 -c "print(1)"',
+    ):
         try:
             guard.validate(bad)
             assert False, bad

@@ -33,8 +33,39 @@ include = [
   "api*",
   "games*",
   "capabilities*",
+  "instruction*",
 ]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["."]
+
+[tool.ruff]
+line-length = 120
+target-version = "py311"
+exclude = [
+  ".git",
+  ".venv",
+  "venv",
+  "build",
+  "dist",
+  "__pycache__",
+  "artifacts",
+]
+
+[tool.ruff.lint]
+# Focus on correctness and real bugs first; style debt is tracked separately.
+select = [
+  "E9",   # runtime syntax errors
+  "F63",  # invalid print/assert
+  "F7",   # syntax errors in type comments
+  "F82",  # undefined names
+  "F401", # unused imports
+  "F841", # unused variables
+  "E71",  # comparison issues
+  "E72",  # bare except etc.
+]
+ignore = []
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*" = ["F401"]
