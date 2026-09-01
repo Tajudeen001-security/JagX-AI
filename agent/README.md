@@ -1,24 +1,7 @@
 # JagX Agent
 
-The agent layer turns model output into controlled engineering actions.
+The general agent loop is: Goal → plan → inspect → act → build/test → observe → repair → verify → report.
 
-## Required loop
+The same agent architecture supports websites, APIs, repositories, games, security reviews, documents and research. Engine-specific behavior belongs in adapters.
 
-Goal → plan → inspect → act → build/test → observe → repair → verify → report.
-
-## Domains
-
-The same agent architecture must support:
-- websites
-- APIs
-- software repositories
-- games
-- security reviews
-- documents
-- research tasks
-
-Engine-specific behavior belongs in adapters, not in the core agent.
-
-## Safety
-
-Filesystem, shell, network, deployment and security tools must be permission-scoped and sandboxed. Destructive actions require explicit authorization.
+Filesystem, shell, network and deployment tools must be permission-scoped and sandboxed.
