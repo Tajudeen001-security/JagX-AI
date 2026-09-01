@@ -1,33 +1,34 @@
 import torch
 from model import ModelConfig, JagXTransformer
-from training.dpo import DPOConfig, dpo_loss
+from training.dpo import DPOConfig, DPOTrainerStep, dpo_loss
 
 
-def test_dpo_loss_finite():
+def test_dpo_loss_shapes():
+    chosen = torch.zeros(4)
+    rejected = torch.ones(4) * -1
+    loss, metrics = dpo_loss(chosen, rejected, None, None, DPOConfig(beta=0.1, reference_free=True))
+    assert loss.ndim == 0
+    assert torch.isfinite(loss)
+    assert "reward_margin" in metrics
+
+
+def test_dpo_trainer_step_smoke():
     cfg = ModelConfig(
-        vocab_size=32,
+        vocab_size=64,
         max_seq_len=16,
-        d_model=16,
+        d_model=32,
         n_layers=1,
-        n_heads=2,
-        d_ff=32,
+        n_heads=4,
+        n_kv_heads=2,
+        d_ff=64,
         dropout=0.0,
     )
     policy = JagXTransformer(cfg)
-    ref = JagXTransformer(cfg)
-    ref.load_state_dict(policy.state_dict())
-    for p in ref.parameters():
-        p.requires_grad_(False)
-
-    chosen = torch.randint(0, 32, (2, 8))
-    rejected = torch.randint(0, 32, (2, 8))
-
-    with torch.no_grad():
-        ref_c, _ = ref(chosen)
-        ref_r, _ = ref(rejected)
-    pol_c, _ = policy(chosen)
-    pol_r, _ = policy(rejected)
-
-    loss = dpo_loss(pol_c, pol_r, ref_c, ref_r, chosen, rejected, DPOConfig(beta=0.1))
+    step = DPOTrainerStep(policy, reference=None, config=DPOConfig(reference_free=True))
+    chosen = torch.randint(0, 64, (2, 8))
+    rejected = torch.randint(0, 64, (2, 8))
+    loss, metrics = step(chosen, rejected)
     assert torch.isfinite(loss)
     loss.backward()
+    grads = [p.grad for p in policy.parameters() if p.grad is not None]
+    assert len(grads) > 0
