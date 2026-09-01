@@ -1,4 +1,5 @@
 from __future__ import annotations
+
 from dataclasses import dataclass
 import math
 
@@ -33,3 +34,14 @@ class RunningMetrics:
             "perplexity": self.perplexity,
             "tokens": self.total_tokens,
         }
+
+    @classmethod
+    def from_snapshot(cls, snapshot: dict | None) -> "RunningMetrics":
+        """Reconstruct aggregate metrics saved in a checkpoint."""
+        data = snapshot or {}
+        steps = int(data.get("steps", 0))
+        tokens = int(data.get("tokens", 0))
+        mean_loss = float(data.get("mean_loss", 0.0))
+        if steps < 0 or tokens < 0 or not math.isfinite(mean_loss) or mean_loss < 0:
+            raise ValueError("invalid metrics snapshot")
+        return cls(steps=steps, total_loss=mean_loss * steps, total_tokens=tokens)
