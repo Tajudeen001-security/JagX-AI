@@ -1,12 +1,11 @@
 {
-  "version": 1,
-  "benchmarks": [
-    {"id":"basic_math","category":"reasoning"},
-    {"id":"code_completion","category":"coding"},
-    {"id":"bug_fix","category":"coding"},
-    {"id":"repo_edit","category":"agent"},
-    {"id":"godot_scene","category":"games"},
-    {"id":"godot_fps_controller","category":"games"},
-    {"id":"godot_build_repair","category":"games"}
-  ]
+  "version": 2,
+  "categories": {
+    "general": ["question_answering", "reasoning", "math"],
+    "coding": ["code_completion", "bug_fix", "repo_edit", "architecture"],
+    "web": ["full_stack_app", "api", "ui_animation", "webgl"],
+    "games": ["godot_scene", "godot_fps", "unreal_project", "unity_project", "generic_3d_game"],
+    "security": ["secure_code_review", "threat_model", "vulnerability_remediation"],
+    "agent": ["tool_selection", "build_test_fix", "long_task_recovery"]
+  }
 }
