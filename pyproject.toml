@@ -28,6 +28,11 @@ include = [
   "multimodal*",
   "media*",
   "safety*",
+  "coding*",
+  "memory*",
+  "api*",
+  "games*",
+  "capabilities*",
 ]
 
 [tool.pytest.ini_options]
