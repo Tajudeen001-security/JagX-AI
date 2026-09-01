@@ -12,7 +12,8 @@ class ExponentialMovingAverage:
         if not 0.0 < decay < 1.0:
             raise ValueError("decay must be between 0 and 1")
         self.decay = decay
-        self.shadow = {id(p): p.detach().clone() for p in parameters if p.requires_grad}
+        self._parameter_refs = tuple(p for p in parameters if p.requires_grad)
+        self.shadow = {id(p): p.detach().clone() for p in self._parameter_refs}
 
     @torch.no_grad()
     def update(self, model_or_params):
@@ -39,7 +40,7 @@ class ExponentialMovingAverage:
         """Return an ID-independent representation suitable for checkpoints."""
         return {
             "decay": self.decay,
-            "shadow": [value.detach().cpu().clone() for value in self.shadow.values()],
+            "shadow": [self.shadow[id(p)].detach().cpu().clone() for p in self._parameter_refs],
         }
 
     @torch.no_grad()
@@ -48,19 +49,17 @@ class ExponentialMovingAverage:
         if not isinstance(state, dict) or "shadow" not in state:
             raise ValueError("invalid EMA state: missing shadow weights")
         shadows = list(state["shadow"])
-        parameters = [p for p in self._parameters() if p.requires_grad]
-        if len(shadows) != len(parameters):
+        if len(shadows) != len(self._parameter_refs):
             raise ValueError("EMA state parameter count does not match the model")
         if "decay" in state:
             decay = float(state["decay"])
             if not 0.0 < decay < 1.0:
                 raise ValueError("invalid EMA decay")
             self.decay = decay
-        self.shadow = {id(p): shadow.detach().to(device=p.device, dtype=p.dtype).clone() for p, shadow in zip(parameters, shadows)}
-
-    def _parameters(self):
-        """Return parameters tracked by this EMA instance in stable insertion order."""
-        return getattr(self, "_parameter_refs", ())
+        self.shadow = {
+            id(p): shadow.detach().to(device=p.device, dtype=p.dtype).clone()
+            for p, shadow in zip(self._parameter_refs, shadows)
+        }
 
 
 # Backward-compatible alias used by CausalLMTrainer
