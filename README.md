@@ -14,10 +14,13 @@ Independent AI research platform. Core model, tokenizer, training, inference, ag
 | Sandbox (path boundary, command allowlist, timeout) | Implemented + unit tested |
 | Coding engine (write → pytest → repair loop) | Implemented + unit tested |
 | Memory (short-term + durable JSONL retrieve) | Implemented + unit tested |
-| Multimodal contracts + encoder interfaces | Interfaces + shape tests (not trained models) |
-| Evaluation adapters | Real model execution smoke (not frontier scores) |
+| Native image/audio/video generator backbones | Implemented + shape/causal-forward tests (not trained models) |
+| Godot/Unity/Unreal project adapters | Implemented + project-generation tests (not AAA production) |
+| Paper trading + risk controls | Implemented + unit tested; paper-only |
+| Movie-length shot planning/resume | Implemented orchestration (generation quality depends on trained media models) |
+| Evaluation adapters + frontier claim gate | Implemented + unit tested (no frontier score claim) |
 
-**Not claimed:** trained frontier performance, image/video generation quality, or autonomous AAA game production.
+**Not claimed:** trained frontier performance, production-quality image/audio/video generation, or autonomous AAA game production. These require substantial training data, compute, evaluation, and asset/tool integration.
 
 ## Quick start
 
@@ -31,7 +34,7 @@ Configs: `configs/tiny.json`, `configs/small.json`, `configs/medium.json` (archi
 
 ## Layout
 
-`model/` `tokenizer/` `training/` `inference/` `agent/` `tools/` `coding/` `memory/` `evaluation/` `multimodal/` `media/` `security/` `configs/` `tests/`
+`model/` `tokenizer/` `training/` `inference/` `agent/` `tools/` `coding/` `memory/` `evaluation/` `multimodal/` `media/` `games/` `capabilities/` `security/` `configs/` `tests/`
 
 See `docs/ARCHITECTURE.md` and `docs/ROADMAP.md`.
 
