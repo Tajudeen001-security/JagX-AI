@@ -1,0 +1,11 @@
+{
+  "$schema":"https://json-schema.org/draft/2020-12/schema",
+  "type":"object",
+  "required":["goal","context","response"],
+  "properties":{
+    "goal":{"type":"string"},
+    "context":{"type":"string"},
+    "tools":{"type":"array","items":{"type":"string"}},
+    "response":{"type":"object","required":["plan","actions","verification"],"properties":{"plan":{"type":"array","items":{"type":"string"}},"actions":{"type":"array"},"verification":{"type":"array","items":{"type":"string"}}}}
+  }
+}
