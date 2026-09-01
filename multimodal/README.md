@@ -1,18 +1,17 @@
-# JagX Multimodal Generation
+# JagX Multimodal Core
 
-JagX is designed to support image and video generation as first-class capabilities while keeping the core system provider-independent.
+JagX treats multimodality as a first-class subsystem. A shared language/token representation is connected to replaceable modality encoders and generative decoders.
 
-## Image generation
-Target pipeline:
-text/image conditioning → planning → generation model → safety checks → quality checks → artifact.
+## Implemented foundation
+- Vision feature projector into JagX token space
+- Audio feature projector interface
 
-## Short video generation
-Target pipeline:
-prompt/storyboard → keyframes → temporal generation → consistency checks → encoding → artifact.
+## Roadmap
+1. image understanding via vision encoder + projector
+2. native image generation decoder
+3. video temporal encoder
+4. native short-video generation decoder
+5. audio understanding/generation
+6. joint multimodal instruction tuning
 
-Short-form outputs should support configurable duration, aspect ratio, frame rate and resolution.
-
-## Architecture
-Generation models are replaceable modules. The assistant must not require a third-party AI API at runtime. A future native JagX generative stack can replace experimental backends without changing the agent interface.
-
-Large generative models and weights are artifacts, not Git repository files.
+External encoders/decoders may be used as replaceable research components, but the core architecture has no mandatory third-party AI runtime dependency. Large model weights belong in artifact storage, not Git.
