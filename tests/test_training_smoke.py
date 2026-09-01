@@ -34,11 +34,12 @@ def test_tiny_train_checkpoint_resume():
 
     with tempfile.TemporaryDirectory() as d:
         path = str(Path(d) / "ckpt.pt")
-        save_checkpoint(path, model, opt, step=2, metadata={"loss": float(loss)})
+        save_checkpoint(path, model, opt, step=2, metadata={"loss": float(loss.detach())})
         model2 = JagXTransformer(cfg)
         opt2 = torch.optim.AdamW(model2.parameters(), lr=1e-3)
-        step = load_checkpoint(path, model2, opt2)
+        step, metadata = load_checkpoint(path, model2, opt2)
         assert step == 2
+        assert metadata["loss"] == float(loss.detach())
         _, loss2 = model2(x, labels=x)
         assert torch.isfinite(loss2)
 
