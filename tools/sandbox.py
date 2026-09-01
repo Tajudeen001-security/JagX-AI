@@ -43,6 +43,18 @@ class WorkspaceSandbox:
         target = self.path(relative)
         target.parent.mkdir(parents=True, exist_ok=True)
         target.write_text(content, encoding="utf-8")
+        # Python can reuse a stale .pyc when rapid repair iterations land in
+        # the same filesystem timestamp tick. Invalidate the sibling cache so
+        # an agent always tests the source it just wrote.
+        if target.suffix == ".py":
+            cache = target.parent / "__pycache__"
+            stem = target.stem
+            if cache.is_dir():
+                for compiled in cache.glob(f"{stem}.*.pyc"):
+                    try:
+                        compiled.unlink()
+                    except OSError:
+                        pass
         self.audit_log.append({"op": "write", "path": str(relative), "bytes": len(content.encode("utf-8"))})
         return target
 
@@ -70,7 +82,6 @@ class WorkspaceSandbox:
         timeout = timeout_s if timeout_s is not None else self.default_timeout_s
         workdir = self.path(cwd) if cwd else self.root
 
-        # Minimal env: no secrets, no network helpers by default
         clean_env = {
             "PATH": os.environ.get("PATH", "/usr/bin:/bin"),
             "HOME": str(self.root),
