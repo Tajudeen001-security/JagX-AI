@@ -21,3 +21,6 @@ jobs:
       - name: Model smoke
         run: |
           python -c "from evaluation.model_smoke import run_smoke_test; print(run_smoke_test())"
+      - name: Eval adapters
+        run: |
+          python -c "from evaluation.model_eval import instruction_following_smoke, coding_shape_smoke; print(instruction_following_smoke()); print(coding_shape_smoke())"
