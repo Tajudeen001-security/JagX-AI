@@ -6,7 +6,8 @@ def test_generate_stub():
     assert "/v1/generate" in Handler.post_routes
     out = Handler.post_routes["/v1/generate"]({"prompt": "hi", "max_tokens": 8})
     assert out["backend"] == "local-stub"
-    assert out["external_ai_api_required"] is None if "external_ai_api_required" not in out else True
+    # stub does not claim an external API dependency field is required
+    assert out.get("external_ai_api_required") in (None, False)
 
 
 def test_custom_generate_fn():

@@ -25,9 +25,8 @@ def test_sandbox_path_boundary():
 def test_sandbox_command_allowlist():
     with tempfile.TemporaryDirectory() as d:
         sb = WorkspaceSandbox(d)
-        # python3 should be allowed
-        result = sb.run_command("python3 -c print(1+1)", timeout_s=10)
-        # may fail if python flags differ; just ensure it did not raise PermissionError
+        # python3 should be allowed; quoting for -c expression
+        result = sb.run_command('python3 -c "print(1+1)"', timeout_s=10)
         assert "returncode" in result
         try:
             sb.run_command("rm -rf /")
@@ -47,11 +46,11 @@ def test_agent_policy_and_tool():
     assert r.ok and r.data == "hi"
 
     agent.register("shellish", echo, permission="shell")
-    try:
-        agent.execute_tool("shellish", {})
-        assert False
-    except PolicyError:
-        pass
+    # execute_tool captures PolicyError into ToolResult rather than raising
+    r2 = agent.execute_tool("shellish", {})
+    assert not r2.ok
+    assert r2.error is not None
+    assert "denied" in r2.error.lower() or "permission" in r2.error.lower()
 
 
 def test_agent_loop_retries():
