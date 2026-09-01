@@ -54,3 +54,15 @@ def test_special_token_ids_stable():
         assert tok.pad_token_id is not None
         assert tok.eos_token_id is not None
         assert tok.vocab_size >= len(SPECIAL_TOKENS)
+
+
+def test_empty_and_long_input():
+    with tempfile.TemporaryDirectory() as d:
+        tmp = Path(d)
+        tok = _make_tiny_tokenizer(tmp)
+        ids = tok.encode("")
+        assert ids[0] == tok.bos_token_id and ids[-1] == tok.eos_token_id
+        long_text = "jagx " * 100
+        ids2 = tok.encode(long_text, max_length=20, truncation=True)
+        assert len(ids2) <= 20
+        assert ids2[-1] == tok.eos_token_id

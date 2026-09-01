@@ -10,5 +10,14 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.11'
-      - run: pip install -e .
-      - run: pytest
+      - name: Install dependencies
+        run: |
+          pip install -e ".[dev]" || pip install -e .
+          pip install torch --index-url https://download.pytorch.org/whl/cpu
+          pip install tokenizers pytest
+      - name: Unit tests
+        run: |
+          pytest tests/ -v --tb=short
+      - name: Model smoke
+        run: |
+          python -c "from evaluation.model_smoke import run_smoke_test; print(run_smoke_test())"
