@@ -2,14 +2,6 @@
 
 Security is a first-class capability.
 
-Focus areas:
-- secure software architecture
-- threat modeling
-- vulnerability detection
-- dependency and configuration review
-- secure coding
-- defensive testing
-- remediation
-- regression testing
+Focus: secure architecture, threat modeling, vulnerability identification, dependency/configuration review, secure coding, defensive testing, remediation and regression testing.
 
-Security tools must run in isolated environments with explicit permissions. The model must distinguish analysis from actions that could affect real systems.
+Security tools run in isolated environments with explicit permissions and least privilege.
