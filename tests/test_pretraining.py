@@ -1,8 +1,8 @@
 import torch
 
-from training.data_contract import TrainingExample
 from training.pretraining import PretrainingConfig, packed_batches, prepare_examples
 from training.trainer import CausalLMTrainer, TrainerConfig
+from training.data_contract import TrainingExample
 
 
 class FakeTokenizer:
@@ -31,11 +31,12 @@ def test_packed_batches_fixed_shape_and_labels():
     examples = [TrainingExample("abcdefghij", "unit-test")]
     cfg = PretrainingConfig(seq_len=4, batch_size=2, drop_remainder=False)
     batches = list(packed_batches(examples, tokenizer, cfg))
-    assert len(batches) == 1
+    assert len(batches) == 2
     assert batches[0]["input_ids"].shape == (2, 4)
     assert batches[0]["labels"].shape == (2, 4)
-    assert torch.equal(batches[0]["labels"][0], batches[0]["input_ids"][0])
-    assert (batches[0]["labels"][1] == -100).any()
+    assert torch.equal(batches[0]["labels"], batches[0]["input_ids"])
+    assert batches[1]["input_ids"].shape == (2, 4)
+    assert (batches[1]["labels"] == -100).any()
 
 
 def test_trainer_moves_batches_to_device_and_learns():
