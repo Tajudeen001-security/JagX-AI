@@ -1,25 +1,27 @@
 from __future__ import annotations
+
 from pathlib import Path
+
 import torch
+
 from security.artifact_integrity import sha256_file
+from .checkpoint import load_checkpoint as load_training_checkpoint
+from .checkpoint import save_checkpoint as save_training_checkpoint
 
 
 def save_checkpoint(model, optimizer, step: int, path: str, metadata: dict | None = None) -> dict:
-    if step < 0:
-        raise ValueError("step must be non-negative")
+    """Compatibility facade over the canonical atomic checkpoint writer."""
+    save_training_checkpoint(path, model, optimizer, step=step, metadata=metadata)
     target = Path(path)
-    target.parent.mkdir(parents=True, exist_ok=True)
-    tmp = target.with_suffix(target.suffix + ".tmp")
-    payload = {
-        "step": step,
-        "model": model.state_dict(),
-        "optimizer": optimizer.state_dict(),
-        "metadata": metadata or {},
-    }
-    torch.save(payload, tmp)
-    tmp.replace(target)
     return {"path": str(target), "sha256": sha256_file(str(target)), "step": step}
 
 
 def load_checkpoint(path: str, device="cpu") -> dict:
-    return torch.load(path, map_location=device, weights_only=True)
+    """Return the serialized checkpoint payload for legacy callers."""
+    state = torch.load(path, map_location=device, weights_only=True)
+    if not isinstance(state, dict) or "step" not in state or "model" not in state:
+        raise ValueError("invalid JagX checkpoint: missing required fields")
+    return state
+
+
+__all__ = ["save_checkpoint", "load_checkpoint", "load_training_checkpoint"]
