@@ -10,7 +10,6 @@ from torch import nn
 
 from model import JagXTransformer, ModelConfig
 from tokenizer import JagXTokenizer
-from training.data_contract import TrainingExample
 from training.pretraining import PretrainingConfig
 from training.seed import set_seed
 
