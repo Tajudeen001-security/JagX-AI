@@ -16,7 +16,7 @@ from training.seed import set_seed
 @dataclass
 class MultimodalBatch:
     input_ids: torch.Tensor
-    labels: torch.Tensor
+    labels: Optional[torch.Tensor]
     images: Optional[torch.Tensor] = None
     audio: Optional[torch.Tensor] = None
     video: Optional[torch.Tensor] = None
@@ -54,6 +54,30 @@ class UnifiedMultimodalModel(nn.Module):
             prefixes.append(self.video(v).flatten(2).transpose(1, 2))
         return prefixes
 
+    def _forward_cached_embeddings(self, embeddings: torch.Tensor):
+        """Run arbitrary multimodal embeddings once and return logits plus KV cache."""
+        if embeddings.ndim != 3:
+            raise ValueError("embeddings must have shape [B,T,D]")
+        _, t, d = embeddings.shape
+        model = self.language_model
+        if t == 0:
+            raise ValueError("embeddings must contain at least one token")
+        if d != model.cfg.d_model:
+            raise ValueError("embedding width must match model d_model")
+        if t > model.cfg.max_seq_len:
+            raise ValueError("embeddings exceed max_seq_len")
+
+        cos, sin = model.rope(t)
+        cos = cos.to(embeddings.device)
+        sin = sin.to(embeddings.device)
+        x = embeddings
+        presents = []
+        for block in model.blocks:
+            x, present = block(x, cos, sin, use_cache=True)
+            presents.append(present)
+        logits = model.lm_head(model.norm(x))
+        return logits, None, presents
+
     def forward(self, batch: MultimodalBatch):
         text = self.language_model.token_embedding(batch.input_ids)
         prefixes = self._prefixes(batch)
@@ -64,6 +88,8 @@ class UnifiedMultimodalModel(nn.Module):
         embeddings = torch.cat([*prefixes, text], dim=1)
         if embeddings.shape[1] > self.language_model.cfg.max_seq_len:
             raise ValueError("combined modality prefixes exceed max_seq_len")
+        if batch.labels is None:
+            return self._forward_cached_embeddings(embeddings)[:2]
         prefix_len = embeddings.shape[1] - text.shape[1]
         prefix_labels = torch.full(
             (batch.labels.shape[0], prefix_len), -100,
