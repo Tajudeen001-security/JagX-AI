@@ -126,6 +126,8 @@ class CausalLMTrainer:
     def train(self, batches: Iterable[Any]) -> dict:
         self.model.train()
         iterator = iter(batches)
+        if self.step >= self.config.max_steps:
+            return self.metrics.snapshot()
         while self.step < self.config.max_steps:
             self.optimizer.zero_grad(set_to_none=True)
             accumulated = 0.0
@@ -135,9 +137,12 @@ class CausalLMTrainer:
                     batch = next(iterator)
                 except StopIteration:
                     iterator = iter(batches)
-                    batch = next(iterator)
+                    try:
+                        batch = next(iterator)
+                    except StopIteration as exc:
+                        raise ValueError("training batches are empty") from exc
                 batch = self._move_batch(batch)
-                with autocast_context(enabled=self.config.use_amp):
+                with autocast_context(enabled=self.config.use_amp, device_type=self.device.type):
                     output = self.model(**batch) if isinstance(batch, dict) else self.model(batch)
                     loss = self._loss(output)
                 if not torch.isfinite(loss):
@@ -158,4 +163,7 @@ class CausalLMTrainer:
             if self.step % self.config.save_every == 0:
                 self.save()
 
+        # Always leave a resumable final checkpoint, even when max_steps is not
+        # an exact multiple of save_every.
+        self.save()
         return self.metrics.snapshot()
