@@ -16,3 +16,6 @@ def generate_unity_project(root: str | Path, *, name: str = "JagXUnityProject") 
         encoding="utf-8",
     )
     return root
+
+
+# Backward-compatible API retained for existing callers.\ndef generate_unity_stub(root: str | Path, *, name: str = "JagXUnityProject") -> Path:\n    return generate_unity_project(root, name=name)\n
