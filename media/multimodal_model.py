@@ -123,20 +123,19 @@ class JagXMultimodalModel(nn.Module):
         prefix = torch.cat([image_embeddings, text_embeddings], dim=1)
         if prefix.shape[1] >= self.cfg.max_seq_len:
             raise ValueError("prompt leaves no room for generated tokens")
-        logits, _ = self._forward_embeddings(prefix)
-        generated = input_ids
-        past = None
-        # Seed the base transformer's cache from the full multimodal prefix.
-        _, _, past = self._forward_cached_embeddings(prefix)
+        # Seed the cache from the complete multimodal prompt. The returned
+        # logits already predict the first generated token, so do not feed the
+        # final prompt token through the model a second time.
+        logits, _, past = self._forward_cached_embeddings(prefix)
+        generated = input_ids.clone()
         for _ in range(max_new_tokens):
-            token = generated[:, -1:]
-            logits, _, past = self.language_model(token, past_key_values=past, use_cache=True)
             scores = logits[:, -1, :] / max(temperature, 1e-5)
             if top_k is not None and top_k > 0:
                 values, _ = torch.topk(scores, min(top_k, scores.size(-1)))
                 scores[scores < values[:, [-1]]] = float("-inf")
             next_token = torch.multinomial(F.softmax(scores, dim=-1), 1)
             generated = torch.cat([generated, next_token], dim=1)
+            logits, _, past = self.language_model(next_token, past_key_values=past, use_cache=True)
         return generated
 
     def _forward_cached_embeddings(self, embeddings: torch.Tensor):
