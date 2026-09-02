@@ -38,7 +38,7 @@ class UnityAdapter(GameEngineAdapter):
     engine = "unity"
 
     def create(self, name: str, files: dict[str, str]) -> GameProject:
-        files = {"ProjectSettings/ProjectVersion.txt": "m_EditorVersion: 2022.3.0f1\n", **files}
+        files = {"ProjectSettings/ProjectVersion.txt": "m_EditorVersion: 2022.3.0f1\n", "Assets/JagXBootstrap.cs": "using UnityEngine;\n\npublic class JagXBootstrap : MonoBehaviour {\n    void Start() { Debug.Log(\"JagX project ready\"); }\n}\n", **files}
         return super().create(name, files)
 
 
