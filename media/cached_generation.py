@@ -1,68 +1,96 @@
 from __future__ import annotations
 
-import torch
+from dataclasses import dataclass
+from typing import Optional
 
-from media.generation import GenerationConfig, _filter_logits
+import torch
+from torch.nn import functional as F
+
 from training.unified_multimodal import MultimodalBatch, UnifiedMultimodalModel
 
 
-@torch.no_grad()
-def generate_cached(
-    model: UnifiedMultimodalModel,
-    batch: MultimodalBatch,
-    config: GenerationConfig | None = None,
-    eos_token_id: int | None = None,
-) -> torch.Tensor:
-    """Generate conditioned text while reusing Transformer KV state."""
-    cfg = config or GenerationConfig()
-    if cfg.max_new_tokens < 0:
-        raise ValueError("max_new_tokens must be non-negative")
+@dataclass(frozen=True)
+class CachedGenerationConfig:
+    max_new_tokens: int = 64
+    temperature: float = 0.8
+    top_k: Optional[int] = 50
+    top_p: Optional[float] = 0.95
+    repetition_penalty: float = 1.0
+
+
+def _next_token(logits: torch.Tensor, generated: torch.Tensor, cfg: CachedGenerationConfig) -> torch.Tensor:
+    if cfg.temperature < 0:
+        raise ValueError("temperature must be non-negative")
     if cfg.repetition_penalty <= 0:
         raise ValueError("repetition_penalty must be positive")
+    scores = logits.clone()
+    if cfg.repetition_penalty != 1.0:
+        for row in range(generated.size(0)):
+            for token_id in set(generated[row].tolist()):
+                value = scores[row, token_id]
+                scores[row, token_id] = value / cfg.repetition_penalty if value > 0 else value * cfg.repetition_penalty
+    if cfg.temperature == 0:
+        return scores.argmax(dim=-1, keepdim=True)
+    scores = scores / cfg.temperature
+    if cfg.top_k is not None:
+        if cfg.top_k <= 0:
+            raise ValueError("top_k must be positive")
+        values = torch.topk(scores, min(cfg.top_k, scores.size(-1)), dim=-1).values
+        scores = scores.masked_fill(scores < values[:, [-1]], float("-inf"))
+    if cfg.top_p is not None:
+        if not 0 < cfg.top_p <= 1:
+            raise ValueError("top_p must be in (0,1]")
+        sorted_scores, sorted_indices = torch.sort(scores, descending=True, dim=-1)
+        cumulative = torch.cumsum(F.softmax(sorted_scores, dim=-1), dim=-1)
+        remove = cumulative > cfg.top_p
+        remove[..., 1:] = remove[..., :-1].clone()
+        remove[..., 0] = False
+        sorted_scores = sorted_scores.masked_fill(remove, float("-inf"))
+        scores = torch.full_like(scores, float("-inf")).scatter(-1, sorted_indices, sorted_scores)
+    return torch.multinomial(F.softmax(scores, dim=-1), 1)
 
+
+@torch.no_grad()
+def generate_multimodal_cached(
+    model: UnifiedMultimodalModel,
+    batch: MultimodalBatch,
+    config: CachedGenerationConfig | None = None,
+    eos_token_id: int | None = None,
+) -> torch.Tensor:
+    """Generate text from any supported modality using one prefix-cache pass."""
+    cfg = config or CachedGenerationConfig()
+    if cfg.max_new_tokens < 0:
+        raise ValueError("max_new_tokens must be non-negative")
     model.eval()
-    lm = model.language_model
-    text = lm.token_embedding(batch.input_ids)
-    prefixes = model._prefixes(batch)
+    device = next(model.parameters()).device
+    ids = batch.input_ids.to(device)
+    if ids.ndim != 2 or ids.size(1) == 0:
+        raise ValueError("input_ids must have shape [B,T] with T > 0")
+    if cfg.max_new_tokens == 0:
+        return ids.clone()
+
+    routed = MultimodalBatch(
+        input_ids=ids,
+        labels=None,
+        images=None if batch.images is None else batch.images.to(device),
+        audio=None if batch.audio is None else batch.audio.to(device),
+        video=None if batch.video is None else batch.video.to(device),
+    )
+    prefixes = model._prefixes(routed)
+    text = model.language_model.token_embedding(ids)
     embeddings = torch.cat([*prefixes, text], dim=1) if prefixes else text
-    if embeddings.shape[1] > lm.cfg.max_seq_len:
-        raise ValueError("conditioning plus prompt exceeds max_seq_len")
+    if embeddings.size(1) + cfg.max_new_tokens > model.language_model.cfg.max_seq_len:
+        raise ValueError("prompt and modality prefixes leave insufficient max_seq_len")
 
-    cos, sin = lm.rope(embeddings.shape[1])
-    x = embeddings
-    past = []
-    for block in lm.blocks:
-        x, present = block(x, cos.to(x.device), sin.to(x.device), use_cache=True)
-        past.append(present)
-
-    generated = batch.input_ids.clone()
-    logits = lm.lm_head(lm.norm(x))[:, -1, :]
+    logits, _, past = model._forward_cached_embeddings(embeddings)
+    generated = ids.clone()
+    finished = torch.zeros(ids.size(0), dtype=torch.bool, device=device)
     for _ in range(cfg.max_new_tokens):
-        next_logits = logits / cfg.temperature
-        if cfg.repetition_penalty != 1.0:
-            for b in range(generated.size(0)):
-                for token_id in set(generated[b].tolist()):
-                    value = next_logits[b, token_id]
-                    next_logits[b, token_id] = value / cfg.repetition_penalty if value > 0 else value * cfg.repetition_penalty
-        filtered = _filter_logits(next_logits, GenerationConfig(
-            max_new_tokens=cfg.max_new_tokens,
-            temperature=1.0,
-            top_k=cfg.top_k,
-            top_p=cfg.top_p,
-            repetition_penalty=1.0,
-        ))
-        next_token = filtered.argmax(dim=-1, keepdim=True) if cfg.temperature <= 0 else torch.multinomial(torch.softmax(filtered, -1), 1)
-        generated = torch.cat([generated, next_token], dim=1)
-        if eos_token_id is not None and bool(torch.all(next_token == eos_token_id)):
-            break
-        x = lm.token_embedding(next_token)
-        pos = sum(k.shape[2] for k, _ in [past[0]]) if False else past[0][0].shape[2]
-        cos, sin = lm.rope(pos + 1)
-        cos, sin = cos[:, :, -1:, :], sin[:, :, -1:, :]
-        new_past = []
-        for i, block in enumerate(lm.blocks):
-            x, present = block(x, cos.to(x.device), sin.to(x.device), past_kv=past[i], use_cache=True)
-            new_past.append(present)
-        past = new_past
-        logits = lm.lm_head(lm.norm(x))[:, -1, :]
+        token = _next_token(logits[:, -1, :], generated, cfg)
+        generated = torch.cat([generated, token], dim=1)
+        if eos_token_id is not None:
+            finished |= token[:, 0].eq(eos_token_id)
+            if bool(finished.all()):
+                break
+        logits, _, past = model.language_model(token, past_key_values=past, use_cache=True)
     return generated
