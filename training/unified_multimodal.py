@@ -23,21 +23,16 @@ class MultimodalBatch:
 
 
 class UnifiedMultimodalModel(nn.Module):
-    """Route one or more modalities into the JagX language model.
-
-    Image uses the production image prefix encoder. Audio/video are projected
-    through compact native adapters; all modality prefixes are concatenated
-    before text and excluded from the LM loss.
-    """
+    """Route one or more modalities into the JagX language model."""
 
     def __init__(self, language_model: JagXTransformer, patch_size: int = 16, audio_stride: int = 320):
         super().__init__()
+        if patch_size <= 0 or audio_stride <= 0:
+            raise ValueError("patch_size and audio_stride must be positive")
         self.language_model = language_model
         self.image = JagXMultimodalModel(language_model, patch_size=patch_size).image_encoder
-        self.audio = nn.Sequential(
-            nn.Conv1d(1, language_model.cfg.d_model, audio_stride, audio_stride),
-            nn.LayerNorm(language_model.cfg.d_model),
-        )
+        self.audio_proj = nn.Conv1d(1, language_model.cfg.d_model, audio_stride, audio_stride)
+        self.audio_norm = nn.LayerNorm(language_model.cfg.d_model)
         self.video = nn.Conv3d(
             3, language_model.cfg.d_model,
             kernel_size=(1, patch_size, patch_size),
@@ -50,7 +45,8 @@ class UnifiedMultimodalModel(nn.Module):
         if batch.images is not None:
             prefixes.append(self.image(batch.images.to(text_device)))
         if batch.audio is not None:
-            prefixes.append(self.audio(batch.audio.to(text_device)).transpose(1, 2))
+            audio = self.audio_proj(batch.audio.to(text_device)).transpose(1, 2)
+            prefixes.append(self.audio_norm(audio))
         if batch.video is not None:
             v = batch.video.to(text_device)
             if v.ndim != 5:
