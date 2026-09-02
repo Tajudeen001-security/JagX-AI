@@ -15,7 +15,6 @@ from .data_contract import TrainingExample
 from .pretraining import PretrainingConfig, packed_batches, prepare_examples
 from .seed import set_seed
 from .trainer import CausalLMTrainer, TrainerConfig
-from .checkpoint import load_checkpoint
 
 
 def load_examples(path: str | Path) -> list[TrainingExample]:
@@ -107,14 +106,15 @@ def run_training(
     tokenizer = JagXTokenizer.from_pretrained(tokenizer_path)
     model = build_model(model_config, tokenizer)
     optimizer = torch.optim.AdamW(model.parameters(), lr=cfg.learning_rate, weight_decay=cfg.weight_decay)
+    target_device = device or ("cuda" if torch.cuda.is_available() else "cpu")
     trainer_config = TrainerConfig(
         max_steps=cfg.max_steps,
         grad_accum=cfg.grad_accum,
         output_dir=str(output_dir),
         device=device,
-        use_amp=device != "cpu",
+        use_amp=target_device in {"cuda", "mps"},
     )
-    trainer = CausalLMTrainer(model, optimizer, config=trainer_config)
+    trainer = CausalLMTrainer(model, optimizer, config=trainer_config, resume_from=str(resume_from) if resume_from else None)
 
     examples = load_examples(data_path)
     train_examples, validation_examples = [], []
@@ -126,13 +126,6 @@ def run_training(
     train_examples, _ = prepare_examples(train_examples, seed=cfg.seed)
     if not train_examples:
         raise ValueError("no training examples remain after filtering")
-
-    if resume_from is not None:
-        step, metadata = load_checkpoint(str(resume_from), model, optimizer, map_location=trainer.device)
-        trainer.step = step
-        trainer.metrics.steps = int(metadata.get("steps", step))
-        trainer.metrics.total_loss = float(metadata.get("mean_loss", 0.0)) * trainer.metrics.steps
-        trainer.metrics.total_tokens = int(metadata.get("tokens", 0))
 
     metrics = trainer.train(packed_batches(train_examples, tokenizer, cfg))
     result = {"train": metrics, "step": trainer.step, "model_config": model_config.to_dict(), "pretraining_config": asdict(cfg)}
