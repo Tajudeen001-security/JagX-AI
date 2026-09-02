@@ -1,5 +1,5 @@
-import torch
 import pytest
+import torch
 
 from model import JagXTransformer, ModelConfig
 from training.multimodal_data import load_multimodal_jsonl
@@ -51,7 +51,7 @@ def test_unified_trainer_runs():
         MultimodalBatch(
             torch.ones(1, 4, dtype=torch.long),
             torch.ones(1, 4, dtype=torch.long),
-            images=torch.rand(1, 3, 8, 8),
+            images=torch.rand(1, 3, 16, 16),
         )
     ]
     result = train_unified(
