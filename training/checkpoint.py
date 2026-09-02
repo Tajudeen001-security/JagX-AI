@@ -25,17 +25,31 @@ def _model_config(model: Any) -> dict[str, Any] | None:
     return None
 
 
+def _numpy_rng_state() -> dict[str, Any] | None:
+    """Encode NumPy RNG state using weights-only-safe primitives."""
+    try:
+        import numpy as np
+    except ImportError:
+        return None
+    bit_generator, keys, pos, has_gauss, cached_gaussian = np.random.get_state()
+    return {
+        "bit_generator": str(bit_generator),
+        "keys": torch.as_tensor(keys, dtype=torch.uint32),
+        "pos": int(pos),
+        "has_gauss": int(has_gauss),
+        "cached_gaussian": float(cached_gaussian),
+    }
+
+
 def _rng_state() -> dict[str, Any]:
     """Capture process RNG streams needed for deterministic continuation."""
     state: dict[str, Any] = {
         "python": random.getstate(),
         "torch": torch.get_rng_state(),
     }
-    try:
-        import numpy as np
-        state["numpy"] = np.random.get_state()
-    except ImportError:
-        pass
+    numpy_state = _numpy_rng_state()
+    if numpy_state is not None:
+        state["numpy"] = numpy_state
     if torch.cuda.is_available():
         state["cuda"] = torch.cuda.get_rng_state_all()
     return state
@@ -49,11 +63,30 @@ def _restore_rng_state(state: Any) -> None:
         random.setstate(state["python"])
     if state.get("torch") is not None:
         torch.set_rng_state(state["torch"])
-    if state.get("numpy") is not None:
+    numpy_state = state.get("numpy")
+    if isinstance(numpy_state, dict):
         try:
             import numpy as np
-            np.random.set_state(state["numpy"])
-        except ImportError:
+            keys = numpy_state["keys"]
+            if torch.is_tensor(keys):
+                keys = keys.detach().cpu().numpy()
+            np.random.set_state(
+                (
+                    str(numpy_state["bit_generator"]),
+                    keys,
+                    int(numpy_state["pos"]),
+                    int(numpy_state["has_gauss"]),
+                    float(numpy_state["cached_gaussian"]),
+                )
+            )
+        except (ImportError, KeyError, TypeError, ValueError):
+            pass
+    elif numpy_state is not None:
+        # Legacy v2 checkpoints stored NumPy's raw tuple; keep compatibility.
+        try:
+            import numpy as np
+            np.random.set_state(numpy_state)
+        except (ImportError, TypeError, ValueError):
             pass
     if state.get("cuda") is not None and torch.cuda.is_available():
         torch.cuda.set_rng_state_all(state["cuda"])
