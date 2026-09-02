@@ -11,8 +11,7 @@ from torch import nn
 from media.multimodal_model import JagXMultimodalModel
 from model import JagXTransformer, ModelConfig
 from tokenizer import JagXTokenizer
-from training.data_contract import TrainingExample
-from training.pretraining import PretrainingConfig, prepare_examples
+from training.pretraining import PretrainingConfig
 from training.seed import set_seed
 
 
@@ -35,7 +34,6 @@ def load_paired_examples(path: str | Path) -> list[dict]:
 
 
 def load_image(path: str | Path) -> torch.Tensor:
-    """Load an image tensor from .pt/.pth or a common image format."""
     image_path = Path(path)
     if image_path.suffix.lower() in {".pt", ".pth"}:
         image = torch.load(image_path, map_location="cpu", weights_only=True)
@@ -44,7 +42,8 @@ def load_image(path: str | Path) -> torch.Tensor:
             from PIL import Image
         except ImportError as exc:
             raise RuntimeError("Pillow is required for non-tensor image files") from exc
-        image = torch.from_numpy(__import__("numpy").asarray(Image.open(image_path).convert("RGB"))).permute(2, 0, 1)
+        import numpy as np
+        image = torch.from_numpy(np.asarray(Image.open(image_path).convert("RGB"))).permute(2, 0, 1)
     image = image.float()
     if image.ndim != 3 or image.shape[0] != 3:
         raise ValueError("image must have shape [3,H,W]")
@@ -56,11 +55,9 @@ def load_image(path: str | Path) -> torch.Tensor:
 def paired_batches(rows: list[dict], tokenizer: JagXTokenizer, cfg: PretrainingConfig) -> Iterable[dict]:
     prepared = []
     for row in rows:
-        tokens = tokenizer.encode(str(row["text"]), add_special_tokens=True)
-        tokens = tokens[: cfg.seq_len]
-        if not tokens:
-            continue
-        prepared.append((row, tokens))
+        tokens = tokenizer.encode(str(row["text"]), add_special_tokens=True)[: cfg.seq_len]
+        if tokens:
+            prepared.append((row, tokens))
     if not prepared:
         raise ValueError("paired dataset produced no tokenized examples")
     for start in range(0, len(prepared), cfg.batch_size):
@@ -71,9 +68,8 @@ def paired_batches(rows: list[dict], tokenizer: JagXTokenizer, cfg: PretrainingC
         labels = torch.full_like(input_ids, -100)
         images = []
         for index, (row, tokens) in enumerate(chunk):
-            length = len(tokens)
-            input_ids[index, :length] = torch.tensor(tokens, dtype=torch.long)
-            labels[index, :length] = input_ids[index, :length]
+            input_ids[index, : len(tokens)] = torch.tensor(tokens, dtype=torch.long)
+            labels[index, : len(tokens)] = input_ids[index, : len(tokens)]
             images.append(load_image(row["image"]))
         if len({tuple(image.shape) for image in images}) != 1:
             raise ValueError("all images in a batch must have identical dimensions")
