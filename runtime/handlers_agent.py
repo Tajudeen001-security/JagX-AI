@@ -67,3 +67,10 @@ def agent_handler(payload: dict[str, Any], ctx: ExecutionContext) -> dict[str, A
             "note": f"Agent path limited: {exc}",
             "request_id": ctx.request_id,
         }
+
+
+def register(orch) -> None:
+    """Register this agent handler on an Orchestrator instance."""
+    from runtime.orchestrator import TaskKind
+
+    orch.register_handler(TaskKind.AGENT, agent_handler)
