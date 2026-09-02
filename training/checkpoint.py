@@ -11,6 +11,19 @@ import torch
 CHECKPOINT_FORMAT_VERSION = 2
 
 
+def _model_config(model: Any) -> dict[str, Any] | None:
+    """Return a serializable model config when the model exposes one."""
+    config = getattr(model, "cfg", None)
+    if config is None:
+        config = getattr(model, "config", None)
+    to_dict = getattr(config, "to_dict", None)
+    if callable(to_dict):
+        value = to_dict()
+        if isinstance(value, dict):
+            return dict(value)
+    return None
+
+
 def save_checkpoint(
     path: str,
     model,
@@ -20,19 +33,28 @@ def save_checkpoint(
     metadata: dict[str, Any] | None = None,
     ema=None,
 ) -> None:
-    """Atomically persist all state required to resume training."""
+    """Atomically persist all state required to resume training.
+
+    Current checkpoints include the model configuration so inference can
+    reconstruct the exact architecture without external configuration files.
+    """
     if step < 0:
         raise ValueError("step must be non-negative")
     target = Path(path)
     target.parent.mkdir(parents=True, exist_ok=True)
+    metadata_value = dict(metadata or {})
+    config = _model_config(model)
+    if config is not None and "model_config" not in metadata_value:
+        metadata_value["model_config"] = config
     payload = {
         "format_version": CHECKPOINT_FORMAT_VERSION,
         "step": int(step),
         "model": model.state_dict(),
+        "config": config,
         "optimizer": optimizer.state_dict(),
         "scheduler": scheduler.state_dict() if scheduler is not None else None,
         "ema": ema.state_dict() if ema is not None and hasattr(ema, "state_dict") else None,
-        "metadata": dict(metadata or {}),
+        "metadata": metadata_value,
     }
     fd, tmp_name = tempfile.mkstemp(prefix=f".{target.name}.", suffix=".tmp", dir=target.parent)
     try:
