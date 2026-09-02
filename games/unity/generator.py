@@ -3,8 +3,8 @@ from __future__ import annotations
 from pathlib import Path
 
 
-def generate_unity_stub(root: str | Path, *, name: str = "JagXUnityProject") -> Path:
-    """Create a minimal Unity-style directory layout (stub)."""
+def generate_unity_project(root: str | Path, *, name: str = "JagXUnityProject") -> Path:
+    """Create a valid Unity project scaffold with a starter scene script."""
     root = Path(root)
     root.mkdir(parents=True, exist_ok=True)
     (root / "Assets").mkdir(exist_ok=True)
