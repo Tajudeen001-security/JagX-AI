@@ -10,10 +10,13 @@ Independent AI research platform. Core model, tokenizer, training, inference, ag
 | Tokenizer (BPE train/save/load, special tokens) | Implemented + unit tested |
 | Training smoke + checkpoint resume | Implemented + unit tested |
 | Local inference (checkpoint + tokenizer → generate) | Implemented + smoke tested |
+| **Unified runtime orchestrator** (routing, limits, retries, cancel, audit) | Implemented + unit tested |
 | Agent + tool registry + policy | Implemented + unit tested |
+| **Agent planner + TaskDAG + DAGExecutor** | Implemented + unit tested |
 | Sandbox (path boundary, command allowlist, timeout) | Implemented + unit tested |
 | Coding engine (write → pytest → repair loop) | Implemented + unit tested |
-| Memory (short-term + durable JSONL retrieve) | Implemented + unit tested |
+| Memory (short-term + durable JSONL, importance, session isolation, dedupe) | Implemented + unit tested |
+| Local API (`/v1/generate`, `/v1/execute`, `/v1/agent`, `/v1/memory`, health) | Implemented + unit tested |
 | Native image/audio/video generator backbones | Implemented + shape/causal-forward tests (not trained models) |
 | Godot/Unity/Unreal project adapters | Implemented + project-generation tests (not AAA production) |
 | Paper trading + risk controls | Implemented + unit tested; paper-only |
@@ -28,13 +31,14 @@ Independent AI research platform. Core model, tokenizer, training, inference, ag
 pip install -e ".[dev]"
 pytest tests/ -q
 python -c "from evaluation.model_smoke import run_smoke_test; print(run_smoke_test())"
+python -c "from runtime.orchestrator import build_default_orchestrator; print(build_default_orchestrator().execute({'kind':'health'}).to_dict())"
 ```
 
 Configs: `configs/tiny.json`, `configs/small.json`, `configs/medium.json` (architecture only; no trained weights implied).
 
 ## Layout
 
-`model/` `tokenizer/` `training/` `inference/` `agent/` `tools/` `coding/` `memory/` `evaluation/` `multimodal/` `media/` `games/` `capabilities/` `security/` `configs/` `tests/`
+`model/` `tokenizer/` `training/` `inference/` `runtime/` `agent/` `tools/` `coding/` `memory/` `api/` `evaluation/` `multimodal/` `media/` `games/` `capabilities/` `security/` `configs/` `tests/`
 
 See `docs/ARCHITECTURE.md` and `docs/ROADMAP.md`.
 
