@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import random
 import tempfile
 from pathlib import Path
 
@@ -45,6 +46,7 @@ def test_checkpoint_restores_optimizer_scheduler_step_metadata_and_ema():
         state = torch.load(path, map_location="cpu", weights_only=True)
         assert state["config"] == model.cfg.to_dict()
         assert state["metadata"]["model_config"] == model.cfg.to_dict()
+        assert "rng_state" in state
 
         restored_model = _model()
         restored_optimizer = torch.optim.AdamW(restored_model.parameters(), lr=1e-3)
@@ -67,6 +69,23 @@ def test_checkpoint_restores_optimizer_scheduler_step_metadata_and_ema():
         for original, restored in zip(ema.shadow.values(), restored_ema.shadow.values()):
             assert torch.equal(original, restored)
         assert not list(Path(directory).glob("*.tmp"))
+
+
+def test_checkpoint_restores_rng_streams():
+    model = _model()
+    optimizer = torch.optim.AdamW(model.parameters(), lr=1e-3)
+    random.seed(1234)
+    torch.manual_seed(5678)
+    with tempfile.TemporaryDirectory() as directory:
+        path = str(Path(directory) / "rng.pt")
+        save_checkpoint(path, model, optimizer, step=3)
+        expected_python = random.random()
+        expected_torch = torch.rand(5)
+        restored_model = _model()
+        restored_optimizer = torch.optim.AdamW(restored_model.parameters(), lr=1e-3)
+        load_checkpoint(path, restored_model, restored_optimizer)
+        assert random.random() == expected_python
+        assert torch.equal(torch.rand(5), expected_torch)
 
 
 def test_trainer_resume_continues_from_saved_step():
