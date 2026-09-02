@@ -71,12 +71,20 @@ def test_checkpoint_restores_optimizer_scheduler_step_metadata_and_ema():
 
 def test_trainer_resume_continues_from_saved_step():
     with tempfile.TemporaryDirectory() as directory:
+        output_dir = str(Path(directory) / "checkpoints")
         first = _model()
         first_optimizer = torch.optim.AdamW(first.parameters(), lr=1e-3)
         first_trainer = CausalLMTrainer(
             first,
             first_optimizer,
-            config=TrainerConfig(max_steps=2, grad_accum=1, save_every=100, use_amp=False, device="cpu"),
+            config=TrainerConfig(
+                max_steps=2,
+                grad_accum=1,
+                save_every=100,
+                output_dir=output_dir,
+                use_amp=False,
+                device="cpu",
+            ),
         )
         batches = [{"input_ids": torch.ones(2, 8, dtype=torch.long), "labels": torch.ones(2, 8, dtype=torch.long)}]
         first_trainer.train(batches)
@@ -88,13 +96,32 @@ def test_trainer_resume_continues_from_saved_step():
         resumed_trainer = CausalLMTrainer(
             resumed,
             resumed_optimizer,
-            config=TrainerConfig(max_steps=4, grad_accum=1, save_every=100, use_amp=False, device="cpu"),
+            config=TrainerConfig(
+                max_steps=4,
+                grad_accum=1,
+                save_every=100,
+                output_dir=output_dir,
+                use_amp=False,
+                device="cpu",
+            ),
             resume_from=checkpoint,
         )
         assert resumed_trainer.step == 2
         resumed_trainer.train(batches)
         assert resumed_trainer.step == 4
         assert resumed_trainer.metrics.steps == 4
+        assert Path(output_dir, "step-4.pt").is_file()
+
+
+def test_trainer_rejects_empty_batches():
+    model = _model()
+    trainer = CausalLMTrainer(
+        model,
+        torch.optim.AdamW(model.parameters(), lr=1e-3),
+        config=TrainerConfig(max_steps=1, grad_accum=1, use_amp=False, device="cpu"),
+    )
+    with pytest.raises(ValueError, match="training batches are empty"):
+        trainer.train([])
 
 
 def test_checkpoint_rejects_future_format():
