@@ -84,13 +84,50 @@ def _default_generate(payload: dict) -> dict:
     }
 
 
+def _orchestrator_execute(payload: dict) -> dict:
+    """Route a request through the unified runtime orchestrator."""
+    from runtime.orchestrator import build_default_orchestrator
+
+    orch = getattr(_orchestrator_execute, "_orch", None)
+    if orch is None:
+        orch = build_default_orchestrator()
+        _orchestrator_execute._orch = orch  # type: ignore[attr-defined]
+    result = orch.execute(payload)
+    return result.to_dict()
+
+
+def _orchestrator_health() -> dict:
+    from runtime.orchestrator import build_default_orchestrator
+
+    orch = getattr(_orchestrator_execute, "_orch", None)
+    if orch is None:
+        orch = build_default_orchestrator()
+        _orchestrator_execute._orch = orch  # type: ignore[attr-defined]
+    base = health()
+    base["runtime"] = orch.health_snapshot()
+    return base
+
+
 def create_app(
     extra_get: Optional[dict[str, Callable[[], dict]]] = None,
     extra_post: Optional[dict[str, Callable[[dict], dict]]] = None,
     generate_fn: Optional[Callable[[dict], dict]] = None,
+    use_orchestrator: bool = True,
 ) -> type[BaseHTTPRequestHandler]:
-    get_routes = {"/health": health, "/v1/health": health, "/v1/models": model_info}
-    post_routes = {"/v1/generate": generate_fn or _default_generate, "/v1/chat": generate_fn or _default_generate}
+    get_routes: dict[str, Callable[[], dict]] = {
+        "/health": _orchestrator_health if use_orchestrator else health,
+        "/v1/health": _orchestrator_health if use_orchestrator else health,
+        "/v1/models": model_info,
+    }
+    post_routes: dict[str, Callable[[dict], dict]] = {
+        "/v1/generate": generate_fn or _default_generate,
+        "/v1/chat": generate_fn or _default_generate,
+    }
+    if use_orchestrator:
+        post_routes["/v1/execute"] = _orchestrator_execute
+        post_routes["/v1/agent"] = lambda p: _orchestrator_execute({**p, "kind": "agent"})
+        post_routes["/v1/memory"] = lambda p: _orchestrator_execute({**p, "kind": "memory"})
+
     if extra_get:
         get_routes.update(extra_get)
     if extra_post:

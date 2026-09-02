@@ -1,10 +1,11 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Any, Optional
+from typing import Any, Callable, Optional
 
 from agent.core import AgentState, JagXAgent
 from agent.loop import AgentLoop
+from agent.planner import DAGExecutor, ExecutionReceipt, Planner, TaskDAG, TaskNode
 from memory import MemoryStore
 from tools.policy import ToolPolicy
 from tools.sandbox import WorkspaceSandbox
@@ -12,12 +13,13 @@ from tools.sandbox import WorkspaceSandbox
 
 @dataclass
 class AgentRuntime:
-    """Combines agent, memory, sandbox and loop for task execution."""
+    """Combines agent, memory, sandbox, loop and DAG planner for task execution."""
 
     agent: JagXAgent
     memory: MemoryStore
     sandbox: Optional[WorkspaceSandbox] = None
     loop: AgentLoop = field(default_factory=lambda: AgentLoop(max_steps=16, max_retries=1))
+    planner: Planner = field(default_factory=Planner)
 
     @classmethod
     def create(
@@ -52,9 +54,58 @@ class AgentRuntime:
         return [r.content for r in self.memory.retrieve(query, k=k)]
 
     def run_goal(self, goal: str, plan_fn, act_fn, verify_fn) -> Any:
+        """Legacy plan→act→verify loop (backward compatible)."""
         state = AgentState(goal=goal)
         self.remember(f"goal: {goal}")
         result = self.loop.run(plan_fn, act_fn, verify_fn)
         self.remember(f"result: {str(result)[:500]}")
         state.done = True
         return result
+
+    def run_dag(
+        self,
+        goal: str,
+        *,
+        handlers: Optional[dict[str, Callable[[TaskNode, dict[str, Any]], Any]]] = None,
+        default_handler: Optional[Callable[[TaskNode, dict[str, Any]], Any]] = None,
+        dag: Optional[TaskDAG] = None,
+    ) -> ExecutionReceipt:
+        """Plan (or accept) a TaskDAG and execute with receipts, retries and memory."""
+        self.remember(f"goal: {goal}")
+        if dag is None:
+            dag = self.planner.plan(goal)
+        else:
+            dag.goal = goal
+            dag.validate()
+
+        resolved: dict[str, Callable[[TaskNode, dict[str, Any]], Any]] = dict(handlers or {})
+
+        if "gather" not in resolved:
+
+            def gather_handler(node: TaskNode, ctx: dict[str, Any]) -> dict[str, Any]:
+                hits = self.recall(goal, k=5)
+                ctx["memory_hits"] = hits
+                return {"hits": hits, "context_update": {"memory_hits": hits}}
+
+            resolved["gather"] = gather_handler
+
+        if "summarize" not in resolved:
+
+            def summarize_handler(node: TaskNode, ctx: dict[str, Any]) -> dict[str, Any]:
+                summary = {
+                    "goal": goal,
+                    "memory_hits": ctx.get("memory_hits", []),
+                    "notes": f"Completed DAG for: {goal[:200]}",
+                }
+                self.remember(f"summary: {summary['notes']}", durable=False)
+                return summary
+
+            resolved["summarize"] = summarize_handler
+
+        executor = DAGExecutor(handlers=resolved)
+        receipt = executor.run(dag, default_handler=default_handler)
+        self.remember(
+            f"dag_result: success={receipt.success} duration_s={receipt.duration_s:.3f}",
+            durable=False,
+        )
+        return receipt
