@@ -14,21 +14,32 @@ def load_model(
     device: Optional[str] = None,
     weights_only: bool = True,
 ) -> tuple[JagXTransformer, ModelConfig]:
-    """Load a JagX checkpoint into a JagXTransformer."""
+    """Load a JagX checkpoint and reconstruct its exact model configuration."""
     device = device or ("cuda" if torch.cuda.is_available() else "cpu")
     path = Path(checkpoint_path)
     ckpt = torch.load(path, map_location=device, weights_only=weights_only)
     if not isinstance(ckpt, dict) or "model" not in ckpt:
         raise ValueError("checkpoint must be a dict containing a 'model' state_dict")
 
-    cfg_data = ckpt.get("config", {})
-    if isinstance(cfg_data, dict):
-        cfg = ModelConfig.from_dict(cfg_data)
-    else:
-        cfg = ModelConfig()
+    cfg_data = ckpt.get("config")
+    if not isinstance(cfg_data, dict):
+        metadata = ckpt.get("metadata")
+        if isinstance(metadata, dict):
+            cfg_data = metadata.get("model_config")
+    if not isinstance(cfg_data, dict):
+        cfg_data = {}
 
-    model = JagXTransformer(cfg)
-    model.load_state_dict(ckpt["model"])
+    cfg = ModelConfig.from_dict(cfg_data)
+    try:
+        model = JagXTransformer(cfg)
+        model.load_state_dict(ckpt["model"])
+    except (RuntimeError, ValueError) as exc:
+        if not cfg_data:
+            raise ValueError(
+                "checkpoint is missing model config; re-save it with training.checkpoint.save_checkpoint "
+                "or provide a checkpoint containing a 'config' field"
+            ) from exc
+        raise
     model.to(device)
     model.eval()
     return model, cfg
@@ -56,7 +67,6 @@ def generate_text(
 ) -> str:
     device = device or next(model.parameters()).device
     ids = tokenizer.encode(prompt, add_special_tokens=True)
-    # Drop trailing EOS so generation can continue
     if ids and ids[-1] == tokenizer.eos_token_id:
         ids = ids[:-1]
     x = torch.tensor([ids], dtype=torch.long, device=device)
