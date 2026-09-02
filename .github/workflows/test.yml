@@ -19,7 +19,7 @@ jobs:
           python -m pip install --upgrade pip
           pip install "torch==2.4.1" --index-url https://download.pytorch.org/whl/cpu
           pip install -e ".[dev]" --no-deps
-          pip install tokenizers pytest
+          pip install "numpy>=1.26" "safetensors>=0.4" tokenizers pytest
       - name: Unit tests
         run: pytest tests/ -v --tb=short
       - name: Model smoke
