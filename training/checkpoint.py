@@ -34,7 +34,7 @@ def _numpy_rng_state() -> dict[str, Any] | None:
     bit_generator, keys, pos, has_gauss, cached_gaussian = np.random.get_state()
     return {
         "bit_generator": str(bit_generator),
-        "keys": torch.as_tensor(keys, dtype=torch.uint32),
+        "keys": [int(value) for value in keys.tolist()],
         "pos": int(pos),
         "has_gauss": int(has_gauss),
         "cached_gaussian": float(cached_gaussian),
@@ -67,9 +67,7 @@ def _restore_rng_state(state: Any) -> None:
     if isinstance(numpy_state, dict):
         try:
             import numpy as np
-            keys = numpy_state["keys"]
-            if torch.is_tensor(keys):
-                keys = keys.detach().cpu().numpy()
+            keys = np.asarray(numpy_state["keys"], dtype=np.uint32)
             np.random.set_state(
                 (
                     str(numpy_state["bit_generator"]),
