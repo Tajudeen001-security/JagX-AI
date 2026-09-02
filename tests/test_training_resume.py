@@ -42,6 +42,9 @@ def test_checkpoint_restores_optimizer_scheduler_step_metadata_and_ema():
     with tempfile.TemporaryDirectory() as directory:
         path = str(Path(directory) / "resume.pt")
         save_checkpoint(path, model, optimizer, scheduler, step=7, metadata={"mean_loss": float(loss)}, ema=ema)
+        state = torch.load(path, map_location="cpu", weights_only=True)
+        assert state["config"] == model.cfg.to_dict()
+        assert state["metadata"]["model_config"] == model.cfg.to_dict()
 
         restored_model = _model()
         restored_optimizer = torch.optim.AdamW(restored_model.parameters(), lr=1e-3)
