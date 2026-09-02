@@ -18,3 +18,6 @@ def generate_unreal_project(root: str | Path, *, name: str = "JagXUnrealProject"
         encoding="utf-8",
     )
     return root
+
+
+# Backward-compatible API retained for existing callers.\ndef generate_unreal_stub(root: str | Path, *, name: str = "JagXUnrealProject") -> Path:\n    return generate_unreal_project(root, name=name)\n
