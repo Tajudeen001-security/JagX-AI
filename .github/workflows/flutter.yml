@@ -24,6 +24,11 @@ jobs:
         with:
           channel: stable
           cache: true
+      # The repository keeps application code here; Flutter generates the
+      # platform runners so the CI build cannot fail merely because generated
+      # Android/Web scaffolding is absent from source control.
+      - name: Generate platform scaffolding
+        run: flutter create . --platforms android,web --project-name jagx_ai --org com.jagx
       - run: flutter pub get
       - run: dart format --output=none --set-exit-if-changed lib test
       - run: flutter analyze
@@ -43,9 +48,14 @@ jobs:
         with:
           channel: stable
           cache: true
+      - name: Generate Android scaffolding
+        run: flutter create . --platforms android --project-name jagx_ai --org com.jagx
       - run: flutter pub get
       - run: flutter build apk --release
+      - run: flutter build appbundle --release
       - uses: actions/upload-artifact@v4
         with:
-          name: jagx-ai-android-apk
-          path: apps/flutter/build/app/outputs/flutter-apk/app-release.apk
+          name: jagx-ai-android-artifacts
+          path: |
+            apps/flutter/build/app/outputs/flutter-apk/app-release.apk
+            apps/flutter/build/app/outputs/bundle/release/app-release.aab
