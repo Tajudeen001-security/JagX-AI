@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "jagx-ai"
-version = "0.1.1"
+version = "0.1.2"
 description = "Independent AI research and agent platform"
 requires-python = ">=3.10"
 dependencies = ["torch>=2.2", "numpy>=1.26", "tokenizers>=0.20", "safetensors>=0.4"]
@@ -13,7 +13,7 @@ dependencies = ["torch>=2.2", "numpy>=1.26", "tokenizers>=0.20", "safetensors>=0
 dev = ["pytest>=8", "ruff>=0.6"]
 
 [project.scripts]
-jagx-demo = "scripts.demo_usable:main"
+jagx = "jagx.cli:main"
 
 [tool.setuptools.packages.find]
 where = ["."]
@@ -37,7 +37,7 @@ include = [
   "games*",
   "capabilities*",
   "instruction*",
-  "scripts*",
+  "jagx*",
 ]
 
 [tool.pytest.ini_options]

@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import json
+import os
 from http.server import BaseHTTPRequestHandler, HTTPServer
+from pathlib import Path
 from typing import Any, Callable, Optional
 from urllib.parse import urlparse
 
@@ -15,12 +17,14 @@ def health() -> dict[str, Any]:
 
 
 def model_info() -> dict[str, Any]:
+    bound = bool(os.environ.get("JAGX_CHECKPOINT") and os.environ.get("JAGX_TOKENIZER"))
     return {
         "name": "jagx",
         "runtime": "local",
         "external_ai_api_required": False,
+        "weights_bound": bound,
         "object": "list",
-        "data": [{"id": "jagx-local", "object": "model"}],
+        "data": [{"id": "jagx-local", "object": "model", "weights_bound": bound}],
     }
 
 
@@ -79,14 +83,15 @@ class _Handler(BaseHTTPRequestHandler):
             result = self.post_routes[path](payload)
             if not isinstance(result, dict):
                 result = {"data": result}
+            # Explicit unavailable (no weights)
+            if result.get("error") == "model_not_bound" or result.get("code") == "model_not_bound":
+                self._json(503, result)
+                return
             status = str(result.get("status") or "").lower()
             if status in ("failed", "error"):
                 code = 400
             elif status in ("timed_out",):
                 code = 504
-            elif status in ("cancelled",):
-                code = 499 if False else 400  # 499 not standard in BaseHTTP
-                code = 400
             else:
                 code = 200
             self._json(code, result)
@@ -94,17 +99,29 @@ class _Handler(BaseHTTPRequestHandler):
             self._json(400, {"error": str(e), "error_type": type(e).__name__})
 
 
-def _default_generate(payload: dict) -> dict:
-    prompt = payload.get("prompt") or payload.get("input") or ""
-    max_tokens = int(payload.get("max_tokens") or payload.get("tokens") or 64)
+def _unbound_generate(payload: dict) -> dict:
+    """No fake empty text — client must bind a real checkpoint."""
     return {
-        "object": "jagx.generation",
-        "backend": "local-stub",
-        "prompt_chars": len(str(prompt)),
-        "max_tokens": max_tokens,
-        "text": "",
-        "note": "Bind a loaded JagXTransformer via create_app(generate_fn=...) for real generation.",
+        "error": "model_not_bound",
+        "code": "model_not_bound",
+        "message": "No JagX checkpoint is bound. Train a model, then set JAGX_CHECKPOINT and JAGX_TOKENIZER or start with jagx serve --checkpoint ...",
+        "prompt_chars": len(str(payload.get("prompt") or payload.get("input") or "")),
     }
+
+
+def _try_env_generate_fn() -> Optional[Callable[[dict], dict]]:
+    ckpt = os.environ.get("JAGX_CHECKPOINT")
+    tok = os.environ.get("JAGX_TOKENIZER")
+    if not ckpt or not tok:
+        return None
+    if not Path(ckpt).exists():
+        return None
+    try:
+        from api.local_generate import make_generate_fn_from_paths
+
+        return make_generate_fn_from_paths(ckpt, tok)
+    except Exception:
+        return None
 
 
 def _orchestrator_execute(payload: dict) -> dict:
@@ -127,6 +144,7 @@ def _orchestrator_health() -> dict:
         _orchestrator_execute._orch = orch  # type: ignore[attr-defined]
     base = health()
     base["runtime"] = orch.health_snapshot()
+    base["weights_bound"] = bool(os.environ.get("JAGX_CHECKPOINT") and Path(os.environ["JAGX_CHECKPOINT"]).exists()) if os.environ.get("JAGX_CHECKPOINT") else False
     return base
 
 
@@ -136,14 +154,17 @@ def create_app(
     generate_fn: Optional[Callable[[dict], dict]] = None,
     use_orchestrator: bool = True,
 ) -> type[BaseHTTPRequestHandler]:
+    if generate_fn is None:
+        generate_fn = _try_env_generate_fn() or _unbound_generate
+
     get_routes: dict[str, Callable[[], dict]] = {
         "/health": _orchestrator_health if use_orchestrator else health,
         "/v1/health": _orchestrator_health if use_orchestrator else health,
         "/v1/models": model_info,
     }
     post_routes: dict[str, Callable[[dict], dict]] = {
-        "/v1/generate": generate_fn or _default_generate,
-        "/v1/chat": generate_fn or _default_generate,
+        "/v1/generate": generate_fn,
+        "/v1/chat": generate_fn,
     }
     if use_orchestrator:
         post_routes["/v1/execute"] = _orchestrator_execute

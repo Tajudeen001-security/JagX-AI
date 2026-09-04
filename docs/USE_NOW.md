@@ -1,39 +1,37 @@
-# What you can use **today** (no trained weights required)
+# Real usage (no demo mode)
 
-JagX is useful as a **local agent + sandbox + training platform**, not as a finished chatbot brain until you train (or load) weights.
+JagX runs as a real local platform. There is no demo backend that pretends to be smart.
 
-## Works right now
+## Commands
 
 ```bash
 pip install -e ".[dev]"
-python scripts/demo_usable.py
+
+# Verify agent, memory, tools, model forward (real code paths)
+jagx verify
+
+# Real agent DAG
+jagx agent "summarize research notes"
+
+# Memory
+jagx memory add "important fact"
+jagx memory retrieve "important"
+
+# Tools
+jagx tool echo --args '{"message":"hi"}'
+
+# Coding sandbox (real write + pytest)
+jagx code --workspace /tmp/ws --files-json files.json
+
+# Generate — ONLY with a real checkpoint after training
+jagx generate "Hello" --checkpoint path/to.pt --tokenizer path/to/tok
+
+# API
+jagx serve --checkpoint path/to.pt --tokenizer path/to/tok
 ```
 
-You should see:
+## Generation without weights
 
-1. **Health** — orchestrator up, capabilities listed
-2. **Memory** — add + retrieve
-3. **Agent DAG** — a real plan/execute graph for a goal (coding/research style)
-4. **Model smoke** — tiny random transformer forward + generate (structure works; text is not smart yet)
+`/v1/generate` returns **HTTP 503** `model_not_bound`. It does not return fake empty text.
 
-API without weights:
-
-```bash
-python -m api.server
-# POST /v1/agent  {"goal": "inspect and summarize the repo layout"}
-# POST /v1/memory {"memory_action": "add", "content": "..."}
-# POST /v1/execute {"kind": "health"}
-```
-
-## Needs your training (or a checkpoint)
-
-- Smart answers to general questions
-- Good code generation quality
-- Image/audio/video quality
-
-Path: open data + free GPU hours + `training.entrypoint` + resume checkpoints (see `docs/FREE_TRAINING.md`).
-
-## Design goal
-
-Make the **control plane** (agent, tools, sandbox, memory, train, serve) excellent first.  
-Then attach a model that you actually trained. Architecture stays honest.
+Train with `jagx train` or `python -m training.entrypoint` (see `docs/FREE_TRAINING.md`).
