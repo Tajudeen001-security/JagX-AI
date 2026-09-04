@@ -15,6 +15,7 @@ def main() -> None:
     p.add_argument("--top-k", type=int, default=50)
     p.add_argument("--top-p", type=float, default=0.95)
     p.add_argument("--repetition-penalty", type=float, default=1.0)
+    p.add_argument("--seed", type=int, default=None, help="RNG seed for deterministic generation")
     a = p.parse_args()
 
     model, _ = load_model(a.checkpoint)
@@ -28,6 +29,7 @@ def main() -> None:
         top_k=a.top_k,
         top_p=a.top_p,
         repetition_penalty=a.repetition_penalty,
+        seed=a.seed,
     )
     print(text)
 
