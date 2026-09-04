@@ -12,11 +12,11 @@ Independent AI research platform. Core model, tokenizer, training, inference, ag
 | Local inference (checkpoint + tokenizer → generate) | Implemented + smoke tested |
 | **Unified runtime orchestrator** (routing, limits, retries, cancel, audit) | Implemented + unit tested |
 | Agent + tool registry + policy | Implemented + unit tested |
-| **Agent planner + TaskDAG + DAGExecutor** | Implemented + unit tested |
+| **Agent planner + TaskDAG + DAGExecutor** (default orchestrator path) | Implemented + unit tested |
 | Sandbox (path boundary, command allowlist, timeout) | Implemented + unit tested |
 | Coding engine (write → pytest → repair loop) | Implemented + unit tested |
 | Memory (short-term + durable JSONL, importance, session isolation, dedupe) | Implemented + unit tested |
-| Local API (`/v1/generate`, `/v1/execute`, `/v1/agent`, `/v1/memory`, health) | Implemented + unit tested |
+| Local API (`/v1/generate`, `/v1/execute`, `/v1/agent`, `/v1/memory`, `/v1/code`, health) | Implemented + unit tested |
 | Native image/audio/video generator backbones | Implemented + shape/causal-forward tests (not trained models) |
 | Godot/Unity/Unreal project adapters | Implemented + project-generation tests (not AAA production) |
 | Paper trading + risk controls | Implemented + unit tested; paper-only |
@@ -25,6 +25,8 @@ Independent AI research platform. Core model, tokenizer, training, inference, ag
 
 **Not claimed:** trained frontier performance, production-quality image/audio/video generation, or autonomous AAA game production. These require substantial training data, compute, evaluation, and asset/tool integration.
 
+See `docs/CAPABILITY_MATRIX.md` for the full 🟢/🟡/🔴 matrix.
+
 ## Quick start
 
 ```bash
@@ -32,6 +34,7 @@ pip install -e ".[dev]"
 pytest tests/ -q
 python -c "from evaluation.model_smoke import run_smoke_test; print(run_smoke_test())"
 python -c "from runtime.orchestrator import build_default_orchestrator; print(build_default_orchestrator().execute({'kind':'health'}).to_dict())"
+python -c "from runtime.orchestrator import build_default_orchestrator; print(build_default_orchestrator().execute({'goal':'summarize research'}).to_dict())"
 ```
 
 Configs: `configs/tiny.json`, `configs/small.json`, `configs/medium.json` (architecture only; no trained weights implied).
