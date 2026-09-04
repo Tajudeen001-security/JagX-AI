@@ -3,7 +3,6 @@
 
 from __future__ import annotations
 
-import json
 import sys
 
 
@@ -45,20 +44,26 @@ def main() -> int:
     hits = r.data.get("hits") or []
     print("[2] Memory OK — hits:", len(hits))
 
-    # 3) Agent DAG
+    # 3) Builtin tools
+    t = orch.execute({"kind": "tool", "tool": "echo", "arguments": {"message": "jagx-ok"}})
+    assert t.status == RequestStatus.SUCCEEDED, t.error
+    assert (t.data or {}).get("ok") is True
+    print("[3] Tools OK — echo:", (t.data or {}).get("data"))
+
+    # 4) Agent DAG
     ag = orch.execute({"goal": "implement and test a small utility function", "timeout_s": 60})
     assert ag.status == RequestStatus.SUCCEEDED, ag.error
     data = ag.data or {}
-    print("[3] Agent OK — backend:", data.get("backend") or data.get("status"))
+    print("[4] Agent OK — backend:", data.get("backend") or data.get("status"))
     dag = data.get("dag") or {}
     if dag:
         print("    tasks:", dag.get("total"), "counts:", dag.get("counts"))
 
-    # 4) Model smoke (structure only)
+    # 5) Model smoke (structure only)
     from evaluation.model_smoke import run_smoke_test
 
     smoke = run_smoke_test()
-    print("[4] Model smoke OK — params:", smoke["parameters"], "loss:", round(smoke["loss"], 4))
+    print("[5] Model smoke OK — params:", smoke["parameters"], "loss:", round(smoke["loss"], 4))
 
     print("\n=== Demo finished successfully ===")
     print("Next: train a tiny checkpoint (docs/FREE_TRAINING.md) for real text quality.")
