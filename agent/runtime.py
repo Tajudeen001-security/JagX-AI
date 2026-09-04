@@ -69,6 +69,10 @@ class AgentRuntime:
         handlers: Optional[dict[str, Callable[[TaskNode, dict[str, Any]], Any]]] = None,
         default_handler: Optional[Callable[[TaskNode, dict[str, Any]], Any]] = None,
         dag: Optional[TaskDAG] = None,
+        files: Optional[dict[str, str]] = None,
+        test_command: str = "python3 -m pytest -q",
+        timeout_s: float = 60.0,
+        repair_fn: Optional[Callable[[dict[str, str], str], dict[str, str]]] = None,
     ) -> ExecutionReceipt:
         """Plan (or accept) a TaskDAG and execute with receipts, retries and memory."""
         self.remember(f"goal: {goal}")
@@ -79,6 +83,20 @@ class AgentRuntime:
             dag.validate()
 
         resolved: dict[str, Callable[[TaskNode, dict[str, Any]], Any]] = dict(handlers or {})
+
+        # Real coding handlers when a workspace sandbox is available
+        if self.sandbox is not None:
+            from agent.coding_handlers import build_coding_handlers
+
+            coding = build_coding_handlers(
+                self.sandbox,
+                files=files,
+                test_command=test_command,
+                timeout_s=timeout_s,
+                repair_fn=repair_fn,
+            )
+            for name, fn in coding.items():
+                resolved.setdefault(name, fn)
 
         if "gather" not in resolved:
 
@@ -102,7 +120,12 @@ class AgentRuntime:
 
             resolved["summarize"] = summarize_handler
 
+        # Seed context for coding files if provided
         executor = DAGExecutor(handlers=resolved)
+        if files:
+            executor.context["files"] = dict(files)
+        executor.context["goal"] = goal
+
         receipt = executor.run(dag, default_handler=default_handler)
         self.remember(
             f"dag_result: success={receipt.success} duration_s={receipt.duration_s:.3f}",

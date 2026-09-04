@@ -23,9 +23,21 @@ def agent_handler(payload: dict[str, Any], ctx: ExecutionContext) -> dict[str, A
         except Exception:
             runtime = None
 
+    files = payload.get("files") if isinstance(payload.get("files"), dict) else None
+    test_command = str(payload.get("test_command") or "python3 -m pytest -q")
+    timeout_s = float(payload.get("timeout_s") or 60.0)
+    repair_fn = payload.get("_repair_fn")
+
     if runtime is not None and hasattr(runtime, "run_dag"):
         handlers = payload.get("_dag_handlers")
-        receipt = runtime.run_dag(goal, handlers=handlers)
+        receipt = runtime.run_dag(
+            goal,
+            handlers=handlers,
+            files=files,
+            test_command=test_command,
+            timeout_s=timeout_s,
+            repair_fn=repair_fn if callable(repair_fn) else None,
+        )
         out = {
             "goal": goal,
             "success": receipt.success,
@@ -56,7 +68,6 @@ def agent_handler(payload: dict[str, Any], ctx: ExecutionContext) -> dict[str, A
             "backend": "agent-loop",
         }
 
-    # Fallback: plan-only using Planner without full runtime
     try:
         from agent.planner import Planner
 
@@ -80,7 +91,6 @@ def agent_handler(payload: dict[str, Any], ctx: ExecutionContext) -> dict[str, A
 
 
 def register(orch) -> None:
-    """Register this agent handler on an Orchestrator instance."""
     from runtime.orchestrator import TaskKind
 
     orch.register_handler(TaskKind.AGENT, agent_handler)
