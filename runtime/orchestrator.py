@@ -147,7 +147,14 @@ class Orchestrator:
         return TaskKind.UNKNOWN
 
     def _emit(self, event: str, ctx: ExecutionContext, **extra: Any) -> dict[str, Any]:
-        record = {"event": event, "request_id": ctx.request_id, "session_id": ctx.session_id, "kind": ctx.kind.value, "ts": time.time(), **extra}
+        record = {
+            "event": event,
+            "request_id": ctx.request_id,
+            "session_id": ctx.session_id,
+            "kind": ctx.kind.value,
+            "ts": time.time(),
+            **extra,
+        }
         self._audit_sink.append(record)
         if len(self._audit_sink) > 2000:
             self._audit_sink = self._audit_sink[-1000:]
@@ -156,24 +163,52 @@ class Orchestrator:
     def recent_audit(self, limit: int = 50) -> list[dict[str, Any]]:
         return list(self._audit_sink[-limit:])
 
-    def execute(self, payload: dict[str, Any], *, session_id: Optional[str] = None, timeout_s: Optional[float] = None, request_id: Optional[str] = None) -> StructuredResult:
+    def execute(
+        self,
+        payload: dict[str, Any],
+        *,
+        session_id: Optional[str] = None,
+        timeout_s: Optional[float] = None,
+        request_id: Optional[str] = None,
+    ) -> StructuredResult:
         if not isinstance(payload, dict):
             raise TypeError("payload must be a dict")
         rid = request_id or new_request_id()
         kind = self.classify(payload)
         timeout = timeout_s if timeout_s is not None else float(payload.get("timeout_s") or self.default_timeout_s)
-        ctx = ExecutionContext(request_id=rid, session_id=session_id or payload.get("session_id"), kind=kind, deadline=time.time() + max(0.1, timeout), metadata={"client": payload.get("client")})
+        ctx = ExecutionContext(
+            request_id=rid,
+            session_id=session_id or payload.get("session_id"),
+            kind=kind,
+            deadline=time.time() + max(0.1, timeout),
+            metadata={"client": payload.get("client")},
+        )
         self._active[rid] = ctx
         audit: list[dict[str, Any]] = []
         t0 = time.time()
 
-        def finish(status: RequestStatus, data: Any = None, error: Optional[str] = None, error_type: Optional[str] = None) -> StructuredResult:
+        def finish(
+            status: RequestStatus,
+            data: Any = None,
+            error: Optional[str] = None,
+            error_type: Optional[str] = None,
+        ) -> StructuredResult:
             latency = (time.time() - t0) * 1000.0
             ok = status == RequestStatus.SUCCEEDED
             self.health.record(ok)
             (self.breaker.success if ok else self.breaker.failure)()
             self._active.pop(rid, None)
-            result = StructuredResult(request_id=rid, status=status, kind=kind, data=data, error=error, error_type=error_type, latency_ms=latency, audit=audit, metadata={"session_id": ctx.session_id})
+            result = StructuredResult(
+                request_id=rid,
+                status=status,
+                kind=kind,
+                data=data,
+                error=error,
+                error_type=error_type,
+                latency_ms=latency,
+                audit=audit,
+                metadata={"session_id": ctx.session_id},
+            )
             audit.append(self._emit("request_finished", ctx, status=status.value, latency_ms=latency, error=error))
             return result
 
@@ -194,7 +229,11 @@ class Orchestrator:
         if handler is None:
             if kind == TaskKind.HEALTH:
                 return finish(RequestStatus.SUCCEEDED, data=self.health_snapshot())
-            return finish(RequestStatus.FAILED, error=f"no handler registered for kind={kind.value}", error_type="NoHandler")
+            return finish(
+                RequestStatus.FAILED,
+                error=f"no handler registered for kind={kind.value}",
+                error_type="NoHandler",
+            )
 
         def operation() -> Any:
             ctx.check_cancelled()
@@ -218,16 +257,33 @@ class Orchestrator:
             audit.append(self._emit("request_error", ctx, error=str(exc), traceback=traceback.format_exc(limit=6)))
             return finish(RequestStatus.FAILED, error=str(exc), error_type=type(exc).__name__)
 
-    def stream(self, payload: dict[str, Any], *, session_id: Optional[str] = None, timeout_s: Optional[float] = None, request_id: Optional[str] = None) -> Iterator[dict[str, Any]]:
+    def stream(
+        self,
+        payload: dict[str, Any],
+        *,
+        session_id: Optional[str] = None,
+        timeout_s: Optional[float] = None,
+        request_id: Optional[str] = None,
+    ) -> Iterator[dict[str, Any]]:
         rid = request_id or new_request_id()
         kind = self.classify(payload)
         timeout = timeout_s if timeout_s is not None else float(payload.get("timeout_s") or self.default_timeout_s)
-        ctx = ExecutionContext(request_id=rid, session_id=session_id or payload.get("session_id"), kind=kind, deadline=time.time() + max(0.1, timeout))
+        ctx = ExecutionContext(
+            request_id=rid,
+            session_id=session_id or payload.get("session_id"),
+            kind=kind,
+            deadline=time.time() + max(0.1, timeout),
+        )
         self._active[rid] = ctx
         t0 = time.time()
         yield {"event": "start", "request_id": rid, "kind": kind.value}
         if not self.breaker.allow():
-            yield {"event": "error", "request_id": rid, "error": "circuit_breaker_open", "status": RequestStatus.FAILED.value}
+            yield {
+                "event": "error",
+                "request_id": rid,
+                "error": "circuit_breaker_open",
+                "status": RequestStatus.FAILED.value,
+            }
             self._active.pop(rid, None)
             return
         handler = self._stream_handlers.get(kind)
@@ -235,14 +291,25 @@ class Orchestrator:
             result = self.execute(payload, session_id=session_id, timeout_s=timeout, request_id=rid)
             if result.status == RequestStatus.SUCCEEDED:
                 yield {"event": "data", "request_id": rid, "data": result.data}
-            yield {"event": "end", "request_id": rid, "status": result.status.value, "error": result.error, "latency_ms": result.latency_ms}
+            yield {
+                "event": "end",
+                "request_id": rid,
+                "status": result.status.value,
+                "error": result.error,
+                "latency_ms": result.latency_ms,
+            }
             return
         try:
             for chunk in handler(payload, ctx):
                 ctx.check_cancelled()
                 remaining = ctx.remaining_timeout()
                 if remaining is not None and remaining <= 0:
-                    yield {"event": "error", "request_id": rid, "error": "timed out", "status": RequestStatus.TIMED_OUT.value}
+                    yield {
+                        "event": "error",
+                        "request_id": rid,
+                        "error": "timed out",
+                        "status": RequestStatus.TIMED_OUT.value,
+                    }
                     self.health.record(False)
                     self.breaker.failure()
                     self._active.pop(rid, None)
@@ -251,12 +318,24 @@ class Orchestrator:
             latency = (time.time() - t0) * 1000.0
             self.health.record(True)
             self.breaker.success()
-            yield {"event": "end", "request_id": rid, "status": RequestStatus.SUCCEEDED.value, "latency_ms": latency}
+            yield {
+                "event": "end",
+                "request_id": rid,
+                "status": RequestStatus.SUCCEEDED.value,
+                "latency_ms": latency,
+            }
         except Exception as exc:
             latency = (time.time() - t0) * 1000.0
             self.health.record(False)
             self.breaker.failure()
-            yield {"event": "error", "request_id": rid, "error": str(exc), "error_type": type(exc).__name__, "status": RequestStatus.FAILED.value, "latency_ms": latency}
+            yield {
+                "event": "error",
+                "request_id": rid,
+                "error": str(exc),
+                "error_type": type(exc).__name__,
+                "status": RequestStatus.FAILED.value,
+                "latency_ms": latency,
+            }
         finally:
             self._active.pop(rid, None)
 
@@ -272,7 +351,10 @@ class Orchestrator:
         snap = self.health.snapshot()
         snap["active_requests"] = len(self._active)
         snap["circuit_open"] = not self.breaker.allow()
-        snap["capabilities"] = [{"name": c.name, "enabled": c.enabled, "description": c.description} for c in self.registry.list()]
+        snap["capabilities"] = [
+            {"name": c.name, "enabled": c.enabled, "description": c.description}
+            for c in self.registry.list()
+        ]
         return snap
 
     def shutdown(self, wait: bool = True) -> None:
@@ -333,7 +415,7 @@ def build_default_orchestrator() -> Orchestrator:
     def tool_handler(payload, ctx):
         from tools.registry import ToolRegistry
 
-        registry = payload.get("_registry") or ToolRegistry()
+        registry = payload.get("_registry") or ToolRegistry.create_default()
         name = payload.get("tool") or payload.get("tool_name")
         if not name:
             raise ValueError("tool name required")
@@ -351,23 +433,34 @@ def build_default_orchestrator() -> Orchestrator:
 
     def multimodal_handler(payload, ctx):
         modality = payload.get("modality") or (
-            "image" if "image" in payload else "audio" if "audio" in payload else "video" if "video" in payload else "unknown"
+            "image"
+            if "image" in payload
+            else "audio"
+            if "audio" in payload
+            else "video"
+            if "video" in payload
+            else "unknown"
         )
         return {"modality": modality, "status": "accepted", "request_id": ctx.request_id}
 
     orch.register_handler(TaskKind.MULTIMODAL, multimodal_handler)
 
-    # Prefer dedicated handler modules (cleaner, tested paths)
     try:
         from runtime.handlers_agent import register as register_agent
 
         register_agent(orch)
     except Exception:
+
         def agent_handler(payload, ctx):
             goal = str(payload.get("goal") or payload.get("prompt") or "")
             if not goal:
                 raise ValueError("agent requires goal")
-            return {"goal": goal, "status": "accepted", "request_id": ctx.request_id, "backend": "degraded"}
+            return {
+                "goal": goal,
+                "status": "accepted",
+                "request_id": ctx.request_id,
+                "backend": "degraded",
+            }
 
         orch.register_handler(TaskKind.AGENT, agent_handler)
 
@@ -376,8 +469,11 @@ def build_default_orchestrator() -> Orchestrator:
 
         register_code(orch)
     except Exception:
+
         def code_handler(payload, ctx):
-            instruction = str(payload.get("instruction") or payload.get("prompt") or payload.get("code") or "")
+            instruction = str(
+                payload.get("instruction") or payload.get("prompt") or payload.get("code") or ""
+            )
             return {
                 "instruction": instruction[:500],
                 "status": "accepted",
