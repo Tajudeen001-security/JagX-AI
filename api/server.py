@@ -127,6 +127,7 @@ def create_app(
         post_routes["/v1/execute"] = _orchestrator_execute
         post_routes["/v1/agent"] = lambda p: _orchestrator_execute({**p, "kind": "agent"})
         post_routes["/v1/memory"] = lambda p: _orchestrator_execute({**p, "kind": "memory"})
+        post_routes["/v1/code"] = lambda p: _orchestrator_execute({**p, "kind": "code"})
 
     if extra_get:
         get_routes.update(extra_get)
