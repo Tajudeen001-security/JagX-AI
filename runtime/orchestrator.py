@@ -289,13 +289,20 @@ def build_default_orchestrator() -> Orchestrator:
 
     def memory_handler(payload, ctx):
         from memory.store import MemoryStore
+
         store = payload.get("_store") or MemoryStore()
         action = (payload.get("memory_action") or payload.get("action") or "retrieve").lower()
         if action == "add":
             content = str(payload.get("content") or payload.get("text") or "")
             if not content:
                 raise ValueError("memory add requires content")
-            rec = store.add(content, kind=str(payload.get("kind") or "episodic"), source=str(payload.get("source") or "orchestrator"), durable=bool(payload.get("durable", False)), metadata={"request_id": ctx.request_id})
+            rec = store.add(
+                content,
+                kind=str(payload.get("kind") or "episodic"),
+                source=str(payload.get("source") or "orchestrator"),
+                durable=bool(payload.get("durable", False)),
+                metadata={"request_id": ctx.request_id},
+            )
             return {"id": rec.id, "content": rec.content}
         if action in ("retrieve", "search", "recall"):
             query = str(payload.get("query") or payload.get("text") or "")
@@ -310,62 +317,74 @@ def build_default_orchestrator() -> Orchestrator:
         if callable(fn):
             return fn(payload)
         prompt = str(payload.get("prompt") or payload.get("input") or payload.get("text") or "")
-        return {"object": "jagx.generation", "backend": "orchestrator-unbound", "prompt_chars": len(prompt), "max_tokens": int(payload.get("max_tokens") or payload.get("max_new_tokens") or 64), "text": "", "note": "Bind local generate via _generate_fn", "request_id": ctx.request_id}
+        return {
+            "object": "jagx.generation",
+            "backend": "orchestrator-unbound",
+            "prompt_chars": len(prompt),
+            "max_tokens": int(payload.get("max_tokens") or payload.get("max_new_tokens") or 64),
+            "text": "",
+            "note": "Bind local generate via _generate_fn",
+            "request_id": ctx.request_id,
+        }
 
     orch.register_handler(TaskKind.GENERATE, generate_handler)
     orch.register_handler(TaskKind.CHAT, generate_handler)
 
     def tool_handler(payload, ctx):
         from tools.registry import ToolRegistry
+
         registry = payload.get("_registry") or ToolRegistry()
         name = payload.get("tool") or payload.get("tool_name")
         if not name:
             raise ValueError("tool name required")
         args = payload.get("arguments") or payload.get("args") or {}
         result = registry.run(str(name), args if isinstance(args, dict) else {})
-        return {"ok": result.ok, "data": result.data, "error": result.error, "audit": result.audit, "request_id": ctx.request_id}
+        return {
+            "ok": result.ok,
+            "data": result.data,
+            "error": result.error,
+            "audit": result.audit,
+            "request_id": ctx.request_id,
+        }
 
     orch.register_handler(TaskKind.TOOL, tool_handler)
 
-    def agent_handler(payload, ctx):
-        goal = str(payload.get("goal") or payload.get("prompt") or "")
-        if not goal:
-            raise ValueError("agent requires goal")
-        runtime = payload.get("_agent_runtime")
-        if runtime is None:
-            try:
-                from agent.runtime import AgentRuntime
-                runtime = AgentRuntime.create(workspace=payload.get("workspace") or payload.get("repo_path"))
-            except Exception as exc:
-                return {"goal": goal, "status": "degraded", "error": str(exc), "request_id": ctx.request_id}
-        if hasattr(runtime, "run_dag"):
-            receipt = runtime.run_dag(goal, handlers=payload.get("_dag_handlers"))
-            out = receipt.to_dict() if hasattr(receipt, "to_dict") else {"goal": getattr(receipt, "goal", goal), "success": getattr(receipt, "success", False), "duration_s": getattr(receipt, "duration_s", 0.0), "error": getattr(receipt, "error", None), "dag": getattr(receipt, "dag_summary", {})}
-            out["request_id"] = ctx.request_id
-            out["backend"] = "agent-dag"
-            return out
-        if hasattr(runtime, "run_goal"):
-            result = runtime.run_goal(goal, lambda s=None: [goal], lambda s=None: {"acted": True, "goal": goal}, lambda s=None: True)
-            return {"goal": goal, "result": result, "request_id": ctx.request_id, "backend": "agent-loop"}
-        return {"goal": goal, "status": "accepted", "request_id": ctx.request_id}
-
-    orch.register_handler(TaskKind.AGENT, agent_handler)
-
-    def code_handler(payload, ctx):
-        engine = payload.get("_coding_engine")
-        if engine is not None and hasattr(engine, "write_and_test"):
-            files = payload.get("files") or {}
-            if isinstance(files, dict) and files:
-                result = engine.write_and_test(files, test_command=str(payload.get("test_command") or "python3 -m pytest -q"), timeout_s=float(payload.get("timeout_s") or 60.0))
-                return {"ok": result.ok, "files_written": result.files_written, "test_output": result.test_output[:4000], "error": result.error, "attempts": result.attempts, "request_id": ctx.request_id, "backend": "coding-engine"}
-        instruction = str(payload.get("instruction") or payload.get("prompt") or payload.get("code") or "")
-        return {"instruction": instruction[:500], "status": "accepted", "note": "CodingEngine not bound", "request_id": ctx.request_id}
-
-    orch.register_handler(TaskKind.CODE, code_handler)
-
     def multimodal_handler(payload, ctx):
-        modality = payload.get("modality") or ("image" if "image" in payload else "audio" if "audio" in payload else "video" if "video" in payload else "unknown")
+        modality = payload.get("modality") or (
+            "image" if "image" in payload else "audio" if "audio" in payload else "video" if "video" in payload else "unknown"
+        )
         return {"modality": modality, "status": "accepted", "request_id": ctx.request_id}
 
     orch.register_handler(TaskKind.MULTIMODAL, multimodal_handler)
+
+    # Prefer dedicated handler modules (cleaner, tested paths)
+    try:
+        from runtime.handlers_agent import register as register_agent
+
+        register_agent(orch)
+    except Exception:
+        def agent_handler(payload, ctx):
+            goal = str(payload.get("goal") or payload.get("prompt") or "")
+            if not goal:
+                raise ValueError("agent requires goal")
+            return {"goal": goal, "status": "accepted", "request_id": ctx.request_id, "backend": "degraded"}
+
+        orch.register_handler(TaskKind.AGENT, agent_handler)
+
+    try:
+        from runtime.handlers_code import register as register_code
+
+        register_code(orch)
+    except Exception:
+        def code_handler(payload, ctx):
+            instruction = str(payload.get("instruction") or payload.get("prompt") or payload.get("code") or "")
+            return {
+                "instruction": instruction[:500],
+                "status": "accepted",
+                "request_id": ctx.request_id,
+                "backend": "coding-accepted",
+            }
+
+        orch.register_handler(TaskKind.CODE, code_handler)
+
     return orch
