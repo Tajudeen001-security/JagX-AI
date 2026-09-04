@@ -29,6 +29,17 @@ class ToolRegistry:
         self._specs: dict[str, ToolSpec] = {}
         self._handlers: dict[str, Callable[[dict], ToolResult]] = {}
 
+    @classmethod
+    def create_default(cls) -> "ToolRegistry":
+        reg = cls()
+        try:
+            from tools.builtin import register_builtin_tools
+
+            register_builtin_tools(reg)
+        except Exception:
+            pass
+        return reg
+
     def register(self, spec: ToolSpec, handler: Callable[[dict], ToolResult]) -> None:
         self._specs[spec.name] = spec
         self._handlers[spec.name] = handler
@@ -41,7 +52,13 @@ class ToolRegistry:
     def list_tools(self) -> list[ToolSpec]:
         return list(self._specs.values())
 
-    def run(self, name: str, arguments: dict, *, policy_check: Optional[Callable[[str], None]] = None) -> ToolResult:
+    def run(
+        self,
+        name: str,
+        arguments: dict,
+        *,
+        policy_check: Optional[Callable[[str], None]] = None,
+    ) -> ToolResult:
         spec = self.get(name)
         if policy_check is not None:
             policy_check(spec.permission)
@@ -58,4 +75,8 @@ class ToolRegistry:
             }
             return result
         except Exception as e:
-            return ToolResult(ok=False, error=str(e), audit={"tool": name, "permission": spec.permission})
+            return ToolResult(
+                ok=False,
+                error=str(e),
+                audit={"tool": name, "permission": spec.permission},
+            )

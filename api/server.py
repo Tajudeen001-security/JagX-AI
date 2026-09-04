@@ -19,6 +19,8 @@ def model_info() -> dict[str, Any]:
         "name": "jagx",
         "runtime": "local",
         "external_ai_api_required": False,
+        "object": "list",
+        "data": [{"id": "jagx-local", "object": "model"}],
     }
 
 
@@ -29,11 +31,20 @@ class _Handler(BaseHTTPRequestHandler):
     def log_message(self, format: str, *args) -> None:
         return
 
+    def _cors(self) -> None:
+        self.send_header("Access-Control-Allow-Origin", "*")
+        self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+        self.send_header("Access-Control-Allow-Headers", "Content-Type, Authorization")
+
     def _json(self, code: int, payload: dict) -> None:
-        body = json.dumps(payload).encode("utf-8")
+        body = json.dumps(payload, default=str).encode("utf-8")
         self.send_response(code)
         self.send_header("Content-Type", "application/json")
         self.send_header("Content-Length", str(len(body)))
+        rid = payload.get("request_id")
+        if rid:
+            self.send_header("X-Request-Id", str(rid))
+        self._cors()
         self.end_headers()
         self.wfile.write(body)
 
@@ -45,6 +56,11 @@ class _Handler(BaseHTTPRequestHandler):
         except json.JSONDecodeError:
             return {}
         return data if isinstance(data, dict) else {}
+
+    def do_OPTIONS(self) -> None:  # noqa: N802
+        self.send_response(204)
+        self._cors()
+        self.end_headers()
 
     def do_GET(self) -> None:  # noqa: N802
         path = urlparse(self.path).path
@@ -61,17 +77,24 @@ class _Handler(BaseHTTPRequestHandler):
         payload = self._read_json()
         try:
             result = self.post_routes[path](payload)
-            self._json(200, result)
+            if not isinstance(result, dict):
+                result = {"data": result}
+            status = str(result.get("status") or "").lower()
+            if status in ("failed", "error"):
+                code = 400
+            elif status in ("timed_out",):
+                code = 504
+            elif status in ("cancelled",):
+                code = 499 if False else 400  # 499 not standard in BaseHTTP
+                code = 400
+            else:
+                code = 200
+            self._json(code, result)
         except Exception as e:
-            self._json(400, {"error": str(e)})
+            self._json(400, {"error": str(e), "error_type": type(e).__name__})
 
 
 def _default_generate(payload: dict) -> dict:
-    """Placeholder generate that does not call external APIs.
-
-    When a model is not bound, returns an explicit local-stub response so clients
-    can detect that weights are not loaded rather than silently proxying.
-    """
     prompt = payload.get("prompt") or payload.get("input") or ""
     max_tokens = int(payload.get("max_tokens") or payload.get("tokens") or 64)
     return {
@@ -85,7 +108,6 @@ def _default_generate(payload: dict) -> dict:
 
 
 def _orchestrator_execute(payload: dict) -> dict:
-    """Route a request through the unified runtime orchestrator."""
     from runtime.orchestrator import build_default_orchestrator
 
     orch = getattr(_orchestrator_execute, "_orch", None)
@@ -128,6 +150,7 @@ def create_app(
         post_routes["/v1/agent"] = lambda p: _orchestrator_execute({**p, "kind": "agent"})
         post_routes["/v1/memory"] = lambda p: _orchestrator_execute({**p, "kind": "memory"})
         post_routes["/v1/code"] = lambda p: _orchestrator_execute({**p, "kind": "code"})
+        post_routes["/v1/tool"] = lambda p: _orchestrator_execute({**p, "kind": "tool"})
 
     if extra_get:
         get_routes.update(extra_get)
@@ -139,7 +162,6 @@ def create_app(
 
     Handler.get_routes = get_routes
     Handler.post_routes = post_routes
-    # backward compat for older tests looking at .routes
     Handler.routes = get_routes
     return Handler
 
