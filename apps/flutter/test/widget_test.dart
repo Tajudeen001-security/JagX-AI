@@ -6,6 +6,8 @@ void main() {
     await tester.pumpWidget(const JagXApp());
     expect(find.text('JagX AI'), findsOneWidget);
     expect(find.text('Your unified AI workspace.'), findsOneWidget);
-    expect(find.text('Code'), findsOneWidget);
+    expect(find.text('Code'), findsWidgets);
+    expect(find.text('Explore'), findsOneWidget);
+    expect(find.text('Capabilities'), findsOneWidget);
   });
 }
