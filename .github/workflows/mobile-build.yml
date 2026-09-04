@@ -10,7 +10,7 @@ on:
 
 jobs:
   mobile-validation:
-    name: Mobile dependency and Expo validation
+    name: Mobile validation
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -26,9 +26,10 @@ jobs:
       - run: npx expo export --platform web
 
   eas-build:
-    name: Android/iOS EAS build
-    if: ${{ secrets.EXPO_TOKEN != '' }}
+    name: EAS Android and iOS build
     runs-on: ubuntu-latest
+    env:
+      EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
     defaults:
       run:
         working-directory: apps/mobile
@@ -38,8 +39,15 @@ jobs:
         with:
           node-version: 20
       - run: npm install --no-audit --no-fund
-      - uses: expo/expo-github-action@v8
+      - name: Build with EAS when configured
+        if: ${{ env.EXPO_TOKEN != '' }}
+        uses: expo/expo-github-action@v8
         with:
           eas-version: latest
           token: ${{ secrets.EXPO_TOKEN }}
-      - run: eas build --platform all --non-interactive --no-wait
+      - name: Start EAS build
+        if: ${{ env.EXPO_TOKEN != '' }}
+        run: eas build --platform all --non-interactive --no-wait
+      - name: Explain skipped cloud build
+        if: ${{ env.EXPO_TOKEN == '' }}
+        run: echo 'EXPO_TOKEN is not configured; local validation completed, cloud EAS build was intentionally skipped.'
