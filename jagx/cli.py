@@ -131,7 +131,7 @@ def cmd_generate(args: argparse.Namespace) -> int:
     if not ckpt or not tok:
         print(
             "ERROR: real generation requires --checkpoint and --tokenizer "
-            "(or JAGX_CHECKPOINT / JAGX_TOKENIZER). Train first.",
+            "(or JAGX_CHECKPOINT / JAGX_TOKENIZER). Train first (jagx train-e2e).",
             file=sys.stderr,
         )
         return 2
@@ -153,7 +153,6 @@ def cmd_generate(args: argparse.Namespace) -> int:
 
 
 def cmd_code(args: argparse.Namespace) -> int:
-    """Real sandboxed write+test."""
     from runtime.orchestrator import RequestStatus, build_default_orchestrator
 
     files = json.loads(Path(args.files_json).read_text(encoding="utf-8"))
@@ -173,7 +172,7 @@ def cmd_code(args: argparse.Namespace) -> int:
 
 
 def cmd_serve(args: argparse.Namespace) -> int:
-    from api.server import create_app, serve
+    from api.server import create_app
     from api.local_generate import make_generate_fn_from_paths
 
     ckpt = args.checkpoint or os.environ.get("JAGX_CHECKPOINT")
@@ -183,10 +182,7 @@ def cmd_serve(args: argparse.Namespace) -> int:
         generate_fn = make_generate_fn_from_paths(ckpt, tok, device=args.device)
         print(f"Bound real generator: {ckpt}")
     else:
-        print("WARN: no checkpoint bound — /v1/generate will return 503 until you train+bind")
-
-    # serve() uses create_app internally; patch via create_app path
-    import api.server as server_mod
+        print("WARN: no local checkpoint — will use NVIDIA if NVIDIA_API_KEY set, else 503")
 
     def _serve(host: str, port: int) -> None:
         from http.server import HTTPServer
@@ -201,22 +197,20 @@ def cmd_serve(args: argparse.Namespace) -> int:
 
 
 def cmd_train(args: argparse.Namespace) -> int:
-    """Delegate to real training entrypoint."""
     from training.entrypoint import main as train_main
 
-    # Build argv for training entrypoint if it uses argparse
     argv = [
         "--data",
         args.data,
         "--tokenizer",
         args.tokenizer,
-        "--config",
-        args.config,
         "--steps",
         str(args.steps),
         "--out-dir",
         args.out_dir,
     ]
+    if args.config:
+        argv.extend(["--config", args.config])
     if args.resume:
         argv.extend(["--resume", args.resume])
     if args.device:
@@ -230,6 +224,29 @@ def cmd_train(args: argparse.Namespace) -> int:
     except Exception as exc:
         print(f"TRAIN ERROR: {exc}", file=sys.stderr)
         return 1
+
+
+def cmd_train_e2e(args: argparse.Namespace) -> int:
+    """Full local path: bootstrap data → tokenizer → train → generate."""
+    from training.e2e_tiny import run_e2e
+
+    try:
+        out = run_e2e(
+            args.work_dir,
+            steps=args.steps,
+            vocab_size=args.vocab_size,
+            device=args.device,
+            prompt=args.prompt,
+        )
+    except Exception as exc:
+        print(f"E2E ERROR: {exc}", file=sys.stderr)
+        return 1
+    print(json.dumps(out, indent=2))
+    print("\nNext:")
+    print(f"  export JAGX_CHECKPOINT={out['checkpoint']}")
+    print(f"  export JAGX_TOKENIZER={out['tokenizer_dir']}")
+    print(f"  jagx generate \"{args.prompt}\" --checkpoint {out['checkpoint']} --tokenizer {out['tokenizer_dir']}")
+    return 0
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -286,12 +303,20 @@ def build_parser() -> argparse.ArgumentParser:
     tr = sub.add_parser("train", help="Run training entrypoint")
     tr.add_argument("--data", required=True)
     tr.add_argument("--tokenizer", required=True)
-    tr.add_argument("--config", default="configs/tiny.json")
+    tr.add_argument("--config", default=None)
     tr.add_argument("--steps", type=int, default=100)
     tr.add_argument("--out-dir", default="checkpoints/run")
     tr.add_argument("--resume")
     tr.add_argument("--device")
     tr.set_defaults(func=cmd_train)
+
+    te = sub.add_parser("train-e2e", help="Bootstrap data, train tiny model, generate once")
+    te.add_argument("--work-dir", default="artifacts/e2e_tiny")
+    te.add_argument("--steps", type=int, default=30)
+    te.add_argument("--vocab-size", type=int, default=512)
+    te.add_argument("--device")
+    te.add_argument("--prompt", default="The agent plans")
+    te.set_defaults(func=cmd_train_e2e)
 
     return p
 
