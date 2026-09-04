@@ -64,7 +64,12 @@ def generate_text(
     repetition_penalty: float = 1.0,
     stop_token_ids: Optional[list[int]] = None,
     device: Optional[str] = None,
+    seed: Optional[int] = None,
 ) -> str:
+    if seed is not None:
+        torch.manual_seed(int(seed))
+        if torch.cuda.is_available():
+            torch.cuda.manual_seed_all(int(seed))
     device = device or next(model.parameters()).device
     ids = tokenizer.encode(prompt, add_special_tokens=True)
     if ids and ids[-1] == tokenizer.eos_token_id:
