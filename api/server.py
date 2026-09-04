@@ -17,14 +17,34 @@ def health() -> dict[str, Any]:
 
 
 def model_info() -> dict[str, Any]:
-    bound = bool(os.environ.get("JAGX_CHECKPOINT") and os.environ.get("JAGX_TOKENIZER"))
+    bound = bool(
+        os.environ.get("JAGX_CHECKPOINT")
+        and os.environ.get("JAGX_TOKENIZER")
+        and Path(os.environ["JAGX_CHECKPOINT"]).exists()
+    )
+    data: list[dict[str, Any]] = []
+    if bound:
+        data.append({"id": "jagx-local", "object": "model", "weights_bound": True})
+    try:
+        from inference.nvidia_client import public_models_list
+
+        pub = public_models_list()
+        if pub.get("nvidia_keys_configured"):
+            data.extend(pub.get("data") or [])
+            return {
+                "object": "list",
+                "data": data,
+                "weights_bound": bound,
+                "cloud_configured": True,
+                "cloud_key_slots": pub.get("nvidia_key_slots", 0),
+            }
+    except Exception:
+        pass
     return {
-        "name": "jagx",
-        "runtime": "local",
-        "external_ai_api_required": False,
-        "weights_bound": bound,
         "object": "list",
-        "data": [{"id": "jagx-local", "object": "model", "weights_bound": bound}],
+        "data": data or [{"id": "jagx-local", "object": "model", "weights_bound": bound}],
+        "weights_bound": bound,
+        "cloud_configured": False,
     }
 
 
@@ -83,8 +103,8 @@ class _Handler(BaseHTTPRequestHandler):
             result = self.post_routes[path](payload)
             if not isinstance(result, dict):
                 result = {"data": result}
-            # Explicit unavailable (no weights)
-            if result.get("error") == "model_not_bound" or result.get("code") == "model_not_bound":
+            code_name = result.get("code") or result.get("error")
+            if code_name in ("model_not_bound", "nvidia_not_configured"):
                 self._json(503, result)
                 return
             status = str(result.get("status") or "").lower()
@@ -100,11 +120,13 @@ class _Handler(BaseHTTPRequestHandler):
 
 
 def _unbound_generate(payload: dict) -> dict:
-    """No fake empty text — client must bind a real checkpoint."""
     return {
         "error": "model_not_bound",
         "code": "model_not_bound",
-        "message": "No JagX checkpoint is bound. Train a model, then set JAGX_CHECKPOINT and JAGX_TOKENIZER or start with jagx serve --checkpoint ...",
+        "message": (
+            "No local checkpoint and no NVIDIA_API_KEY. "
+            "Train + bind JAGX_CHECKPOINT or set NVIDIA_API_KEY secret (see docs/NVIDIA_BACKEND.md)."
+        ),
         "prompt_chars": len(str(payload.get("prompt") or payload.get("input") or "")),
     }
 
@@ -122,6 +144,22 @@ def _try_env_generate_fn() -> Optional[Callable[[dict], dict]]:
         return make_generate_fn_from_paths(ckpt, tok)
     except Exception:
         return None
+
+
+def _try_nvidia_generate_fn() -> Optional[Callable[[dict], dict]]:
+    try:
+        from inference.nvidia_client import get_nvidia_client, nvidia_generate_fn
+
+        if get_nvidia_client() is None:
+            return None
+        return nvidia_generate_fn
+    except Exception:
+        return None
+
+
+def _resolve_default_generate_fn() -> Callable[[dict], dict]:
+    # Prefer local JagX weights; else NVIDIA cloud; else explicit error
+    return _try_env_generate_fn() or _try_nvidia_generate_fn() or _unbound_generate
 
 
 def _orchestrator_execute(payload: dict) -> dict:
@@ -144,7 +182,10 @@ def _orchestrator_health() -> dict:
         _orchestrator_execute._orch = orch  # type: ignore[attr-defined]
     base = health()
     base["runtime"] = orch.health_snapshot()
-    base["weights_bound"] = bool(os.environ.get("JAGX_CHECKPOINT") and Path(os.environ["JAGX_CHECKPOINT"]).exists()) if os.environ.get("JAGX_CHECKPOINT") else False
+    base["weights_bound"] = bool(
+        os.environ.get("JAGX_CHECKPOINT") and Path(os.environ["JAGX_CHECKPOINT"]).exists()
+    ) if os.environ.get("JAGX_CHECKPOINT") else False
+    base["cloud_configured"] = bool(os.environ.get("NVIDIA_API_KEY") or os.environ.get("NVIDIA_API_KEYS"))
     return base
 
 
@@ -155,7 +196,7 @@ def create_app(
     use_orchestrator: bool = True,
 ) -> type[BaseHTTPRequestHandler]:
     if generate_fn is None:
-        generate_fn = _try_env_generate_fn() or _unbound_generate
+        generate_fn = _resolve_default_generate_fn()
 
     get_routes: dict[str, Callable[[], dict]] = {
         "/health": _orchestrator_health if use_orchestrator else health,
