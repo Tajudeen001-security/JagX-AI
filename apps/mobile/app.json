@@ -1,0 +1,15 @@
+{
+  "expo": {
+    "name": "JagX AI",
+    "slug": "jagx-ai",
+    "version": "0.1.0",
+    "orientation": "portrait",
+    "scheme": "jagxai",
+    "userInterfaceStyle": "automatic",
+    "newArchEnabled": true,
+    "ios": { "supportsTablet": true, "bundleIdentifier": "ng.name.jagx.ai" },
+    "android": { "package": "ng.name.jagx.ai", "adaptiveIcon": { "backgroundColor": "#09090B" } },
+    "web": { "bundler": "metro", "output": "static" },
+    "plugins": ["expo-router"]
+  }
+}
