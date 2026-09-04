@@ -1,50 +1,43 @@
 # JagX AI
 
-Independent AI research platform. Core model, tokenizer, training, inference, agent, sandbox, coding loop and evaluation are designed to run **without** another AI provider API.
+Independent AI research platform. Core model, tokenizer, training, inference, agent, sandbox, coding loop and evaluation run **without** another AI provider API.
 
-## Status (what is implemented and tested)
+**No demo mode.** Unbound generation returns an error until a real checkpoint is trained and loaded.
+
+## Status
 
 | Area | State |
 |------|--------|
-| Transformer (RoPE, RMSNorm, SwiGLU, GQA, KV-cache) | Implemented + unit tested |
-| Tokenizer (BPE train/save/load, special tokens) | Implemented + unit tested |
-| Training smoke + checkpoint resume | Implemented + unit tested |
-| Local inference (checkpoint + tokenizer → generate) | Implemented + smoke tested |
-| **Unified runtime orchestrator** (routing, limits, retries, cancel, audit) | Implemented + unit tested |
-| Agent + tool registry + policy | Implemented + unit tested |
-| **Agent planner + TaskDAG + DAGExecutor** (default orchestrator path) | Implemented + unit tested |
-| Sandbox (path boundary, command allowlist, timeout) | Implemented + unit tested |
-| Coding engine (write → pytest → repair loop) | Implemented + unit tested |
-| Memory (short-term + durable JSONL, importance, session isolation, dedupe) | Implemented + unit tested |
-| Local API (`/v1/generate`, `/v1/execute`, `/v1/agent`, `/v1/memory`, `/v1/code`, health) | Implemented + unit tested |
-| Native image/audio/video generator backbones | Implemented + shape/causal-forward tests (not trained models) |
-| Godot/Unity/Unreal project adapters | Implemented + project-generation tests (not AAA production) |
-| Paper trading + risk controls | Implemented + unit tested; paper-only |
-| Movie-length shot planning/resume | Implemented orchestration (generation quality depends on trained media models) |
-| Evaluation adapters + frontier claim gate | Implemented + unit tested (no frontier score claim) |
+| Transformer (RoPE, RMSNorm, SwiGLU, GQA, KV-cache) | Real + tested |
+| Tokenizer BPE | Real + tested |
+| Training + checkpoint resume | Real + tested |
+| Inference from checkpoint | Real (requires your weights) |
+| Unified orchestrator | Real + tested |
+| Agent TaskDAG | Real + tested |
+| Sandbox + coding write→test | Real + tested |
+| Memory | Real + tested |
+| Local API | Real; generate needs checkpoint |
+| Paper trading | Real paper-only |
+| Media / multimodal quality | Architecture present; needs trained media weights |
 
-**Not claimed:** trained frontier performance, production-quality image/audio/video generation, or autonomous AAA game production. These require substantial training data, compute, evaluation, and asset/tool integration.
-
-See `docs/CAPABILITY_MATRIX.md` for the full 🟢/🟡/🔴 matrix.
+**Not claimed:** frontier chat quality without training.
 
 ## Quick start
 
 ```bash
 pip install -e ".[dev]"
 pytest tests/ -q
-python -c "from evaluation.model_smoke import run_smoke_test; print(run_smoke_test())"
-python -c "from runtime.orchestrator import build_default_orchestrator; print(build_default_orchestrator().execute({'kind':'health'}).to_dict())"
-python -c "from runtime.orchestrator import build_default_orchestrator; print(build_default_orchestrator().execute({'goal':'summarize research'}).to_dict())"
+jagx verify
+jagx agent "summarize research notes"
+jagx tool echo --args '{"message":"ok"}'
 ```
 
-Configs: `configs/tiny.json`, `configs/small.json`, `configs/medium.json` (architecture only; no trained weights implied).
+Train then generate:
 
-## Layout
+```bash
+jagx train --data data.jsonl --tokenizer path/to/tok --config configs/tiny.json --steps 200 --out-dir checkpoints/run1
+jagx generate "Hello" --checkpoint checkpoints/run1/... --tokenizer path/to/tok
+jagx serve --checkpoint ... --tokenizer ...
+```
 
-`model/` `tokenizer/` `training/` `inference/` `runtime/` `agent/` `tools/` `coding/` `memory/` `api/` `evaluation/` `multimodal/` `media/` `games/` `capabilities/` `security/` `configs/` `tests/`
-
-See `docs/ARCHITECTURE.md` and `docs/ROADMAP.md`.
-
-External models may be used only as optional research teachers/evaluators. They are never runtime dependencies.
-
-CI keeps linting, tests, and security checks as required gates.
+See `docs/USE_NOW.md`, `docs/FREE_TRAINING.md`, `docs/CAPABILITY_MATRIX.md`.

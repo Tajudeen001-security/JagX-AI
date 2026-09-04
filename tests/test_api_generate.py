@@ -1,13 +1,17 @@
-from api.server import create_app, health
+from api.server import create_app, health, _unbound_generate
 
 
-def test_generate_stub():
+def test_generate_unbound_is_error_not_stub():
     Handler = create_app()
     assert "/v1/generate" in Handler.post_routes
     out = Handler.post_routes["/v1/generate"]({"prompt": "hi", "max_tokens": 8})
-    assert out["backend"] == "local-stub"
-    # stub does not claim an external API dependency field is required
-    assert out.get("external_ai_api_required") in (None, False)
+    assert out.get("error") == "model_not_bound"
+    assert out.get("code") == "model_not_bound"
+
+
+def test_unbound_helper():
+    out = _unbound_generate({"prompt": "x"})
+    assert out["error"] == "model_not_bound"
 
 
 def test_custom_generate_fn():
