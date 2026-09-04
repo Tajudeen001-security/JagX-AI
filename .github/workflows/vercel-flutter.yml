@@ -1,0 +1,61 @@
+name: JagX Flutter Web → Vercel
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'apps/flutter/**'
+      - 'vercel.json'
+      - '.github/workflows/vercel-flutter.yml'
+  workflow_dispatch:
+
+jobs:
+  deploy-web:
+    runs-on: ubuntu-latest
+    if: ${{ github.ref == 'refs/heads/main' || github.event_name == 'workflow_dispatch' }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Generate web scaffolding
+        working-directory: apps/flutter
+        run: flutter create . --platforms web --project-name jagx_ai --org com.jagx
+
+      - name: Get dependencies
+        working-directory: apps/flutter
+        run: flutter pub get
+
+      - name: Analyze
+        working-directory: apps/flutter
+        run: flutter analyze
+
+      - name: Test
+        working-directory: apps/flutter
+        run: flutter test
+
+      - name: Build web
+        working-directory: apps/flutter
+        run: flutter build web --release
+
+      - name: Setup Vercel CLI
+        run: npm install --global vercel@latest
+
+      - name: Link Vercel project
+        working-directory: apps/flutter
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+        run: vercel link --yes --token "$VERCEL_TOKEN"
+
+      - name: Deploy to Vercel
+        working-directory: apps/flutter
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+        run: vercel deploy build/web --prod --token "$VERCEL_TOKEN"
