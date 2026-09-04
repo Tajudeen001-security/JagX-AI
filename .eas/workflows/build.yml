@@ -1,0 +1,21 @@
+name: JagX AI mobile builds
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  build_android:
+    name: Android preview APK
+    type: build
+    params:
+      platform: android
+      profile: preview
+
+  build_ios:
+    name: iOS preview build
+    type: build
+    params:
+      platform: ios
+      profile: development
