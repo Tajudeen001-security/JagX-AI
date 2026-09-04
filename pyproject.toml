@@ -4,13 +4,16 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "jagx-ai"
-version = "0.1.0"
+version = "0.1.1"
 description = "Independent AI research and agent platform"
 requires-python = ">=3.10"
 dependencies = ["torch>=2.2", "numpy>=1.26", "tokenizers>=0.20", "safetensors>=0.4"]
 
 [project.optional-dependencies]
 dev = ["pytest>=8", "ruff>=0.6"]
+
+[project.scripts]
+jagx-demo = "scripts.demo_usable:main"
 
 [tool.setuptools.packages.find]
 where = ["."]
@@ -34,6 +37,7 @@ include = [
   "games*",
   "capabilities*",
   "instruction*",
+  "scripts*",
 ]
 
 [tool.pytest.ini_options]
@@ -54,16 +58,15 @@ exclude = [
 ]
 
 [tool.ruff.lint]
-# Focus on correctness and real bugs first; style debt is tracked separately.
 select = [
-  "E9",   # runtime syntax errors
-  "F63",  # invalid print/assert
-  "F7",   # syntax errors in type comments
-  "F82",  # undefined names
-  "F401", # unused imports
-  "F841", # unused variables
-  "E71",  # comparison issues
-  "E72",  # bare except etc.
+  "E9",
+  "F63",
+  "F7",
+  "F82",
+  "F401",
+  "F841",
+  "E71",
+  "E72",
 ]
 ignore = []
 
