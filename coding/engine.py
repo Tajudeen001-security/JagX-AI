@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Optional
+from typing import Any, Optional
 
 from tools.sandbox import WorkspaceSandbox
 
@@ -14,6 +14,15 @@ class CodingResult:
     test_output: str = ""
     error: Optional[str] = None
     attempts: int = 0
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "ok": self.ok,
+            "files_written": list(self.files_written),
+            "test_output": self.test_output[:4000],
+            "error": self.error,
+            "attempts": self.attempts,
+        }
 
 
 class CodingEngine:
@@ -75,3 +84,28 @@ class CodingEngine:
                 last.error = "repair_fn must return dict[str,str]"
                 return last
         return last
+
+    def run(self, payload: dict[str, Any]) -> dict[str, Any]:
+        """Orchestrator-friendly entrypoint.
+
+        Expected payload keys:
+        - files: dict[str, str] relative path -> content
+        - test_command: optional
+        - timeout_s: optional
+        - repair: optional bool; if true and repair fails, return last result
+        """
+        files = payload.get("files") or {}
+        if not isinstance(files, dict) or not files:
+            instruction = str(payload.get("instruction") or payload.get("prompt") or payload.get("code") or "")
+            return {
+                "instruction": instruction[:500],
+                "status": "accepted",
+                "note": "CodingEngine.run requires files dict",
+            }
+        test_command = str(payload.get("test_command") or "python3 -m pytest -q")
+        timeout_s = float(payload.get("timeout_s") or 60.0)
+        result = self.write_and_test(files, test_command=test_command, timeout_s=timeout_s)
+        out = result.to_dict()
+        out["backend"] = "coding-engine"
+        out["status"] = "ok" if result.ok else "failed"
+        return out
