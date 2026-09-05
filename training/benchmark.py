@@ -7,8 +7,6 @@ from typing import Any
 
 import torch
 
-from .evaluate import evaluate
-
 
 def benchmark_model(
     model: torch.nn.Module,
