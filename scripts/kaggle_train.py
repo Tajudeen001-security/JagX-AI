@@ -1,10 +1,9 @@
 #!/usr/bin/env python3
 """Kaggle-ready end-to-end JagX pretraining launcher.
 
-Downloads a real open corpus, creates deterministic train/validation splits,
-trains a tokenizer from the downloaded corpus, verifies non-empty batches, and
-runs native JagX causal-LM training on CUDA. Large raw data and checkpoints are
-kept outside Git history when this is run on Kaggle.
+Downloads an approved open corpus, creates deterministic train/validation
+splits, trains the native tokenizer, validates packed batches, and runs
+resumable CUDA pretraining. Raw data and checkpoints stay outside Git history.
 """
 from __future__ import annotations
 
@@ -18,7 +17,6 @@ from pathlib import Path
 
 
 def install_runtime_deps() -> None:
-    """Install only the Kaggle-side dataset dependency when requested."""
     if os.environ.get("JAGX_SKIP_PIP", "0") == "1":
         return
     subprocess.check_call([sys.executable, "-m", "pip", "install", "-q", "datasets", "huggingface_hub"])
@@ -31,155 +29,125 @@ def ensure_repo_root() -> Path:
     return root
 
 
-def fetch_oasst(root: Path, rows: int) -> Path:
+def fetch_source(root: Path, source: str, rows: int, config: str | None, split: str) -> Path:
     from datasets import load_dataset
 
     raw = root / "data" / "raw"
     raw.mkdir(parents=True, exist_ok=True)
-    out = raw / f"oasst1-kaggle-{rows}.jsonl"
+    suffix = f"-{config}" if config else ""
+    out = raw / f"{source}{suffix}-{split}-{rows}.jsonl"
     if out.is_file() and out.stat().st_size > 100:
         return out
-
-    ds = load_dataset("OpenAssistant/oasst1", split="train", streaming=True)
+    repos = {
+        "oasst1": ("OpenAssistant/oasst1", "Apache-2.0"),
+        "fineweb2": ("HuggingFaceFW/fineweb-2", "ODC-By"),
+        "dolma": ("allenai/dolma", "ODC-By"),
+    }
+    if source not in repos:
+        raise ValueError(f"unsupported source: {source}")
+    repo, license_name = repos[source]
+    kwargs = {"split": split, "streaming": True}
+    ds = load_dataset(repo, config, **kwargs) if config else load_dataset(repo, **kwargs)
     count = 0
     with out.open("w", encoding="utf-8") as handle:
         for row in ds:
-            text = str(row.get("text") or "").strip()
+            text = row.get("text")
+            if not text and row.get("messages"):
+                text = "\n".join(f"{m.get('role', 'unknown')}: {m.get('content', '')}" for m in row["messages"])
+            text = str(text or "").strip()
             if not text:
                 continue
             handle.write(json.dumps({
-                "id": f"oasst1:{count}",
-                "text": text,
-                "source": "OpenAssistant/oasst1",
-                "license": "Apache-2.0",
-                "language": row.get("lang") or "und",
-                "domain": "instruction",
-                "quality": 1.0,
-                "split": "train",
+                "id": f"{source}:{count}", "text": text, "source": source,
+                "license": license_name, "language": row.get("lang") or row.get("language") or "und",
+                "domain": "instruction" if source == "oasst1" else "general", "quality": 1.0, "split": "train",
             }, ensure_ascii=False) + "\n")
             count += 1
             if count >= rows:
                 break
     if count == 0:
-        raise RuntimeError("OASST1 download returned zero usable records")
-    print(f"Downloaded {count:,} real OASST1 records -> {out}")
+        raise RuntimeError(f"{source} download returned zero usable records")
+    print(f"Downloaded {count:,} real {source} records -> {out}")
     return out
 
 
-def split_and_make_corpus(source: Path, root: Path, validation_fraction: float, seed: int) -> tuple[Path, Path, Path]:
+def split_and_make_corpus(source: Path, root: Path, validation_fraction: float) -> tuple[Path, Path, Path]:
     prepared = root / "data" / "prepared"
     prepared.mkdir(parents=True, exist_ok=True)
-    train_jsonl = prepared / "train.jsonl"
-    val_jsonl = prepared / "validation.jsonl"
-    corpus_txt = prepared / "tokenizer_corpus.txt"
-
+    train_jsonl, val_jsonl, corpus_txt = prepared / "train.jsonl", prepared / "validation.jsonl", prepared / "tokenizer_corpus.txt"
     train_count = val_count = 0
     seen: set[str] = set()
     with source.open(encoding="utf-8") as src, train_jsonl.open("w", encoding="utf-8") as tr, val_jsonl.open("w", encoding="utf-8") as va, corpus_txt.open("w", encoding="utf-8") as corpus:
         for line in src:
             row = json.loads(line)
-            text = str(row.get("text", "")).strip()
-            normalized = " ".join(text.split())
+            normalized = " ".join(str(row.get("text", "")).split())
             if len(normalized) < 20:
                 continue
             key = hashlib.sha256(normalized.encode("utf-8")).hexdigest()
             if key in seen:
                 continue
             seen.add(key)
-            record = {
-                "text": normalized,
-                "source": row.get("source", "OpenAssistant/oasst1"),
-                "license": row.get("license", "Apache-2.0"),
-                "quality": float(row.get("quality", 1.0)),
-            }
-            bucket = int(key[:8], 16) / 0xFFFFFFFF
-            if bucket < validation_fraction:
-                record["split"] = "validation"
-                va.write(json.dumps(record, ensure_ascii=False) + "\n")
-                val_count += 1
+            record = {"text": normalized, "source": row.get("source", source.name), "license": row.get("license", "unknown"), "quality": float(row.get("quality", 1.0))}
+            if int(key[:8], 16) / 0xFFFFFFFF < validation_fraction:
+                record["split"] = "validation"; va.write(json.dumps(record, ensure_ascii=False) + "\n"); val_count += 1
             else:
-                record["split"] = "train"
-                tr.write(json.dumps(record, ensure_ascii=False) + "\n")
-                corpus.write(normalized + "\n")
-                train_count += 1
-
-    if train_count == 0:
-        raise RuntimeError("Prepared training corpus is empty")
-    if val_count == 0:
-        raise RuntimeError("Prepared validation corpus is empty")
+                record["split"] = "train"; tr.write(json.dumps(record, ensure_ascii=False) + "\n"); corpus.write(normalized + "\n"); train_count += 1
+    if train_count == 0 or val_count == 0:
+        raise RuntimeError(f"invalid prepared corpus: train={train_count}, validation={val_count}")
     print(f"Prepared {train_count:,} train + {val_count:,} validation records")
     return train_jsonl, val_jsonl, corpus_txt
 
 
 def train_tokenizer(root: Path, corpus: Path, vocab_size: int) -> Path:
     from tokenizer.train_tokenizer import train
-
     out = root / "artifacts" / "kaggle_tokenizer"
     tokenizer = train([str(corpus)], out, vocab_size=vocab_size, min_frequency=2)
     print(f"Tokenizer ready: vocab_size={tokenizer.vocab_size} -> {out}")
     return out
 
 
+def newest_checkpoint(directory: Path) -> Path | None:
+    candidates = list(directory.glob("step-*.pt"))
+    return max(candidates, key=lambda path: path.stat().st_mtime) if candidates else None
+
+
 def run_training(root: Path, train_jsonl: Path, val_jsonl: Path, tokenizer_path: Path, args: argparse.Namespace) -> dict:
     import torch
     from model import ModelConfig
-    from training.entrypoint import run_training
-    from training.pretraining import PretrainingConfig
+    from tokenizer import JagXTokenizer
+    from training.entrypoint import load_examples, run_training
+    from training.pretraining import PretrainingConfig, packed_batches, prepare_examples
 
     if not torch.cuda.is_available():
         raise RuntimeError("Kaggle GPU is not enabled. In Kaggle: Settings -> Accelerator -> GPU, then restart the session.")
-
-    device = torch.device("cuda")
-    print(f"Using GPU: {torch.cuda.get_device_name(0)}")
-    model_config = ModelConfig(
-        vocab_size=__import__("tokenizer").JagXTokenizer.from_pretrained(tokenizer_path).vocab_size,
-        max_seq_len=args.context_length,
-        d_model=args.hidden_size,
-        n_layers=args.layers,
-        n_heads=args.heads,
-    )
-    pre_cfg = PretrainingConfig(
-        seq_len=args.seq_len,
-        batch_size=args.batch_size,
-        max_steps=args.steps,
-        grad_accum=args.grad_accum,
-        learning_rate=args.lr,
-        weight_decay=args.weight_decay,
-        seed=args.seed,
-        drop_remainder=True,
-    )
-
-    # Fail before allocating the model if packing cannot produce a batch.
-    from training.entrypoint import load_examples
-    from training.pretraining import packed_batches, prepare_examples
-    tokenizer = __import__("tokenizer").JagXTokenizer.from_pretrained(tokenizer_path)
+    tokenizer = JagXTokenizer.from_pretrained(tokenizer_path)
     examples = load_examples(train_jsonl)
     examples, stats = prepare_examples(examples, seed=args.seed)
-    batches = packed_batches(examples, tokenizer, pre_cfg)
+    pre_cfg = PretrainingConfig(seq_len=args.seq_len, batch_size=args.batch_size, max_steps=args.steps, grad_accum=args.grad_accum,
+        learning_rate=args.lr, weight_decay=args.weight_decay, warmup_steps=args.warmup_steps, min_lr_ratio=args.min_lr_ratio,
+        seed=args.seed, drop_remainder=True)
     try:
-        first_batch = next(iter(batches))
+        first_batch = next(iter(packed_batches(examples, tokenizer, pre_cfg)))
     except StopIteration as exc:
         raise RuntimeError("Prepared corpus produced zero training batches. Increase rows or reduce --seq-len.") from exc
     print(f"Batch check OK: shape={tuple(first_batch['input_ids'].shape)} tokens={first_batch['input_ids'].numel():,}; accepted={stats.accepted:,}")
-
+    model_config = ModelConfig(vocab_size=tokenizer.vocab_size, max_seq_len=args.context_length, d_model=args.hidden_size, n_layers=args.layers, n_heads=args.heads)
     out = root / "kaggle_checkpoints"
-    result = run_training(
-        train_jsonl,
-        tokenizer_path,
-        model_config,
-        pre_cfg,
-        output_dir=out,
-        validation_data_path=val_jsonl,
-        device="cuda",
-    )
-    result["device"] = str(device)
+    resume = newest_checkpoint(out) if args.resume else None
+    if resume:
+        print(f"Resuming from {resume}")
+    result = run_training(train_jsonl, tokenizer_path, model_config, pre_cfg, output_dir=out, resume_from=resume, validation_data_path=val_jsonl, device="cuda")
     result["gpu"] = torch.cuda.get_device_name(0)
+    result["cuda_capability"] = list(torch.cuda.get_device_capability(0))
     print(json.dumps(result, indent=2))
     return result
 
 
 def main() -> None:
     parser = argparse.ArgumentParser()
+    parser.add_argument("--source", choices=("oasst1", "fineweb2", "dolma"), default=os.environ.get("JAGX_SOURCE", "oasst1"))
+    parser.add_argument("--config", default=os.environ.get("JAGX_DATASET_CONFIG"))
+    parser.add_argument("--split", default=os.environ.get("JAGX_DATASET_SPLIT", "train"))
     parser.add_argument("--rows", type=int, default=int(os.environ.get("JAGX_ROWS", "50000")))
     parser.add_argument("--steps", type=int, default=int(os.environ.get("JAGX_STEPS", "1000")))
     parser.add_argument("--seq-len", type=int, default=int(os.environ.get("JAGX_SEQ_LEN", "512")))
@@ -192,16 +160,18 @@ def main() -> None:
     parser.add_argument("--heads", type=int, default=6)
     parser.add_argument("--lr", type=float, default=3e-4)
     parser.add_argument("--weight-decay", type=float, default=0.1)
+    parser.add_argument("--warmup-steps", type=int, default=int(os.environ.get("JAGX_WARMUP", "100")))
+    parser.add_argument("--min-lr-ratio", type=float, default=0.1)
     parser.add_argument("--seed", type=int, default=42)
+    parser.add_argument("--resume", action="store_true")
     parser.add_argument("--skip-pip", action="store_true")
     args = parser.parse_args()
-
     if args.skip_pip:
         os.environ["JAGX_SKIP_PIP"] = "1"
     install_runtime_deps()
     root = ensure_repo_root()
-    source = fetch_oasst(root, args.rows)
-    train_jsonl, val_jsonl, corpus = split_and_make_corpus(source, root, validation_fraction=0.05, seed=args.seed)
+    source = fetch_source(root, args.source, args.rows, args.config, args.split)
+    train_jsonl, val_jsonl, corpus = split_and_make_corpus(source, root, validation_fraction=0.05)
     tokenizer_path = train_tokenizer(root, corpus, args.vocab_size)
     run_training(root, train_jsonl, val_jsonl, tokenizer_path, args)
 
