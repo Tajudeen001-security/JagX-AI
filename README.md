@@ -4,18 +4,22 @@ Independent AI research platform. Core model, tokenizer, training, inference, ag
 
 **No demo mode.** Unbound generation returns an error until a real checkpoint is trained and loaded.
 
+Scale configs now go from a 10M smoke model to ~3B (`configs/kaggle.json` through `configs/xlarge.json`). Bigger JSON is not a trained brain — run `jagx inspect` then train.
+
 ## Status
 
 | Area | State |
 |------|--------|
-| Transformer (RoPE, RMSNorm, SwiGLU, GQA, KV-cache) | Real + tested |
+| Transformer (RoPE, RMSNorm, SwiGLU, GQA, KV-cache, SDPA) | Real + tested |
 | Tokenizer BPE | Real + tested |
 | Training + checkpoint resume | Real + tested |
+| Scale ladder (tiny → xlarge) + `jagx inspect` | Real + tested |
 | Inference from checkpoint | Real (requires your weights) |
 | Unified orchestrator | Real + tested |
 | Agent TaskDAG | Real + tested |
 | Sandbox + coding write→test | Real + tested |
 | Memory | Real + tested |
+| Gaming instruction seed corpus | Real MIT seed + collector |
 | Local API | Real; generate needs checkpoint |
 | Paper trading | Real paper-only |
 | Media / multimodal quality | Architecture present; needs trained media weights |
@@ -40,4 +44,12 @@ jagx generate "Hello" --checkpoint checkpoints/run1/... --tokenizer path/to/tok
 jagx serve --checkpoint ... --tokenizer ...
 ```
 
-See `docs/USE_NOW.md`, `docs/FREE_TRAINING.md`, `docs/CAPABILITY_MATRIX.md`.
+Inspect a size and train on Kaggle (not the e2e toy):
+
+```bash
+jagx inspect --config configs/kaggle.json
+python scripts/collect_gaming_corpus.py
+python scripts/kaggle_train.py --resume
+```
+
+See `docs/TRAIN_WELL.md`, `docs/KAGGLE_TRAINING.md`, `docs/USE_NOW.md`, `docs/FREE_TRAINING.md`, `docs/CAPABILITY_MATRIX.md`.
