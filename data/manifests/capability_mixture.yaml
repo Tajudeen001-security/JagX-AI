@@ -1,0 +1,49 @@
+version: 1
+purpose: capability_pretraining_and_instruction
+license_policy: permissive_or_explicitly_audited
+sources:
+  - id: oasst1
+    dataset: OpenAssistant/oasst1
+    config: null
+    split: train
+    license: Apache-2.0
+    role: instruction_conversation
+    max_rows: 50000
+    weight: 0.20
+  - id: openr1_math
+    dataset: open-r1/OpenR1-Math-220k
+    config: default
+    split: train
+    license: Apache-2.0
+    role: mathematics_reasoning
+    max_rows: 75000
+    weight: 0.30
+  - id: codefeedback_python
+    dataset: fxmeng/CodeFeedback-Python105K
+    config: null
+    split: train
+    license: Apache-2.0
+    role: programming_code_execution
+    max_rows: 75000
+    weight: 0.30
+  - id: helpful_instructions
+    dataset: HuggingFaceH4/helpful-instructions
+    config: null
+    split: train
+    license: Apache-2.0
+    role: instruction_following
+    max_rows: 25000
+    weight: 0.15
+  - id: swe_coding
+    dataset: obaydata/swe-coding-instruction-following
+    config: null
+    split: train
+    license: Apache-2.0
+    role: software_engineering
+    max_rows: 5000
+    weight: 0.05
+notes:
+  - Raw datasets are never committed to Git.
+  - Each emitted record retains source and license metadata.
+  - Dataset cards and upstream licenses must be rechecked before commercial redistribution.
+  - Evaluation sets must remain isolated from training data.
