@@ -1,0 +1,16 @@
+{
+  "vocab_size": 32768,
+  "max_seq_len": 4096,
+  "d_model": 384,
+  "n_layers": 6,
+  "n_heads": 6,
+  "n_kv_heads": 2,
+  "d_ff": 1024,
+  "num_experts": 4,
+  "top_k": 2,
+  "dropout": 0.0,
+  "rope_theta": 500000.0,
+  "rms_norm_eps": 1e-6,
+  "tie_embeddings": true,
+  "router_aux_loss_coef": 0.01
+}
