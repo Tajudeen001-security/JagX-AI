@@ -12,17 +12,18 @@ The notebook clones the current `main` branch, installs JagX plus the Hugging Fa
 
 ## Default training run
 
-- Corpus: 50,000 OASST1 records
+- Corpus: 80,000 OASST1 records
 - Validation: 5%
 - Sequence length: 512
 - Batch size: 4
 - Gradient accumulation: 8
-- Model: 6 layers / 384 hidden / 6 attention heads
+- Model: 8 layers / 512 hidden / 8 heads / 4 KV heads (`configs/kaggle.json`)
 - Optimizer: AdamW
 - Learning rate: 3e-4
-- Steps: 1,000
+- Steps: 3,000
+- Attention: PyTorch SDPA when available
 
-These defaults are a bounded research run, not a frontier-model training run. Increase corpus size, model size, and training steps only after the end-to-end pipeline completes successfully.
+These defaults are a bounded research run, not a frontier-model training run. Do not use `jagx train-e2e` as the training path. Increase corpus size, model size, and training steps only after the end-to-end pipeline completes successfully. Mix `data/seed/gaming_instructions.jsonl` when you want the gaming specialist track.
 
 ## Changing the run
 
