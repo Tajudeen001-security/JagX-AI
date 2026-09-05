@@ -1,0 +1,35 @@
+name: JagX training smoke
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'training/**'
+      - 'tokenizer/**'
+      - 'model/**'
+      - 'tests/test_pretraining_schedule.py'
+      - '.github/workflows/training-smoke.yml'
+  pull_request:
+    paths:
+      - 'training/**'
+      - 'tokenizer/**'
+      - 'model/**'
+      - 'tests/test_pretraining_schedule.py'
+      - '.github/workflows/training-smoke.yml'
+  workflow_dispatch:
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install package and test tools
+        run: pip install -e ".[dev]"
+      - name: Run focused training tests
+        run: pytest -q tests/test_pretraining_schedule.py tests/test_training_resume.py
+      - name: Lint training code
+        run: ruff check training scripts/kaggle_train.py tests/test_pretraining_schedule.py
