@@ -1,0 +1,55 @@
+# JagX-AI training corpus manifest
+# Large upstream corpora are downloaded reproducibly; raw copies are NOT committed to Git.
+# Verify each upstream license/terms before commercial redistribution.
+
+version: 1
+sources:
+  - id: oasst1
+    kind: instruction
+    hub: huggingface
+    repo: OpenAssistant/oasst1
+    revision: main
+    license: Apache-2.0
+    splits:
+      - train
+      - validation
+    role: instruction_tuning
+    notes: 84.4k-row train split; use approved/export-ready examples and preserve source metadata.
+
+  - id: fineweb2
+    kind: web_text
+    hub: huggingface
+    repo: HuggingFaceFW/fineweb-2
+    revision: main
+    license: ODC-By
+    role: foundation_pretraining
+    notes: Multilingual processed web corpus. Download only selected language/configuration shards needed for the experiment.
+
+  - id: dolma
+    kind: mixed_text
+    hub: huggingface
+    repo: allenai/dolma
+    revision: main
+    license: ODC-By
+    role: foundation_pretraining
+    notes: Large mixed corpus. Start with a sample for local validation; scale only when storage/compute are available.
+
+  - id: common_crawl
+    kind: web_text
+    source_url: https://commoncrawl.org/get-started
+    license: common-crawl-terms-of-use
+    role: optional_foundation_pretraining
+    notes: Do not treat crawled content as automatically copyright-free. Respect source rights, privacy, robots/opt-out requirements and Common Crawl terms.
+
+processing:
+  required_fields:
+    - id
+    - text
+    - source
+    - license
+    - language
+    - domain
+    - quality
+    - split
+    - contamination_status
+  pipeline: ingest -> normalize -> filter -> deduplicate -> quality-score -> split -> tokenize -> pack -> manifest
