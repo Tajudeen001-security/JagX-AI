@@ -21,6 +21,8 @@ class PretrainingConfig:
     grad_accum: int = 8
     learning_rate: float = 3e-4
     weight_decay: float = 0.1
+    warmup_steps: int = 0
+    min_lr_ratio: float = 0.1
     drop_remainder: bool = True
 
     def validate(self) -> "PretrainingConfig":
@@ -30,6 +32,10 @@ class PretrainingConfig:
             raise ValueError("max_steps and grad_accum must be positive")
         if self.learning_rate <= 0 or self.weight_decay < 0:
             raise ValueError("learning_rate must be positive and weight_decay non-negative")
+        if self.warmup_steps < 0 or self.warmup_steps > self.max_steps:
+            raise ValueError("warmup_steps must be between 0 and max_steps")
+        if not 0.0 < self.min_lr_ratio <= 1.0:
+            raise ValueError("min_lr_ratio must be in (0, 1]")
         return self
 
 
@@ -81,8 +87,31 @@ def prepare_examples(
 
 
 def build_optimizer(model: torch.nn.Module, config: PretrainingConfig) -> torch.optim.AdamW:
+    """Create AdamW with explicit beta/epsilon values used by the training recipe."""
     cfg = config.validate()
-    return torch.optim.AdamW(model.parameters(), lr=cfg.learning_rate, weight_decay=cfg.weight_decay)
+    return torch.optim.AdamW(
+        model.parameters(),
+        lr=cfg.learning_rate,
+        weight_decay=cfg.weight_decay,
+        betas=(0.9, 0.95),
+        eps=1e-8,
+    )
+
+
+def build_scheduler(optimizer: torch.optim.Optimizer, config: PretrainingConfig):
+    """Build a warmup + cosine decay scheduler with a non-zero LR floor."""
+    cfg = config.validate()
+
+    def schedule(step: int) -> float:
+        if step < cfg.warmup_steps and cfg.warmup_steps:
+            return max(1e-8, float(step + 1) / cfg.warmup_steps)
+        if step >= cfg.max_steps:
+            return cfg.min_lr_ratio
+        progress = (step - cfg.warmup_steps) / max(1, cfg.max_steps - cfg.warmup_steps)
+        cosine = 0.5 * (1.0 + torch.cos(torch.tensor(progress * torch.pi)).item())
+        return cfg.min_lr_ratio + (1.0 - cfg.min_lr_ratio) * cosine
+
+    return torch.optim.lr_scheduler.LambdaLR(optimizer, schedule)
 
 
 def train_causal_lm(
@@ -99,6 +128,7 @@ def train_causal_lm(
         raise ValueError("no training examples remain after corpus filtering")
     batches = packed_batches(processed, tokenizer, cfg)
     optimizer = build_optimizer(model, cfg)
+    scheduler = build_scheduler(optimizer, cfg)
     tc = trainer_config or TrainerConfig(max_steps=cfg.max_steps, grad_accum=cfg.grad_accum)
-    trainer = CausalLMTrainer(model, optimizer, config=tc)
+    trainer = CausalLMTrainer(model, optimizer, scheduler=scheduler, config=tc)
     return trainer.train(batches)
