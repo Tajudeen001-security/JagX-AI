@@ -71,6 +71,7 @@ class CausalSelfAttention(nn.Module):
         self.v_proj = nn.Linear(cfg.d_model, cfg.n_kv_heads * self.head_dim, bias=False)
         self.o_proj = nn.Linear(cfg.d_model, cfg.d_model, bias=False)
         self.dropout = nn.Dropout(cfg.dropout)
+        self.use_sdpa = bool(getattr(cfg, "use_sdpa", True))
 
     def _repeat_kv(self, x: torch.Tensor) -> torch.Tensor:
         if self.n_rep == 1:
@@ -105,19 +106,28 @@ class CausalSelfAttention(nn.Module):
         k = self._repeat_kv(k)
         v = self._repeat_kv(v)
 
-        scale = 1.0 / math.sqrt(self.head_dim)
-        scores = torch.matmul(q, k.transpose(-2, -1)) * scale
+        dropout_p = self.dropout.p if self.training else 0.0
+        can_sdpa = self.use_sdpa and hasattr(F, "scaled_dot_product_attention")
+        if can_sdpa:
+            t_total = k.size(2)
+            if t == t_total:
+                out = F.scaled_dot_product_attention(q, k, v, dropout_p=dropout_p, is_causal=True)
+            else:
+                causal = torch.ones(t, t_total, device=x.device, dtype=torch.bool).tril(diagonal=t_total - t)
+                out = F.scaled_dot_product_attention(q, k, v, attn_mask=causal, dropout_p=dropout_p)
+        else:
+            scale = 1.0 / math.sqrt(self.head_dim)
+            scores = torch.matmul(q, k.transpose(-2, -1)) * scale
+            t_total = scores.size(-1)
+            causal = torch.tril(
+                torch.ones(t, t_total, device=x.device, dtype=torch.bool),
+                diagonal=t_total - t,
+            )
+            scores = scores.masked_fill(~causal[None, None, :, :], torch.finfo(scores.dtype).min)
+            attn = F.softmax(scores, dim=-1)
+            attn = self.dropout(attn)
+            out = torch.matmul(attn, v)
 
-        t_total = scores.size(-1)
-        causal = torch.tril(
-            torch.ones(t, t_total, device=x.device, dtype=torch.bool),
-            diagonal=t_total - t,
-        )
-        scores = scores.masked_fill(~causal[None, None, :, :], torch.finfo(scores.dtype).min)
-
-        attn = F.softmax(scores, dim=-1)
-        attn = self.dropout(attn)
-        out = torch.matmul(attn, v)
         out = out.transpose(1, 2).contiguous().view(b, t, -1)
         return self.o_proj(out), present
 
@@ -202,6 +212,9 @@ class JagXTransformer(nn.Module):
 
         self.apply(self._init_weights)
 
+    def parameter_count(self) -> int:
+        return sum(p.numel() for p in self.parameters())
+
     def _init_weights(self, module: nn.Module) -> None:
         if isinstance(module, nn.Linear):
             nn.init.normal_(module.weight, mean=0.0, std=self.cfg.initializer_range)
@@ -240,9 +253,15 @@ class JagXTransformer(nn.Module):
         sin = sin[:, :, past_len : past_len + t, :]
 
         presents = [] if use_cache else None
+        checkpoint = bool(self.cfg.gradient_checkpointing and self.training and not use_cache)
         for i, block in enumerate(self.blocks):
             past_kv = past_key_values[i] if past_key_values is not None else None
-            x, present = block(x, cos, sin, past_kv=past_kv, use_cache=use_cache)
+            if checkpoint:
+                x, present = torch.utils.checkpoint.checkpoint(
+                    block, x, cos, sin, past_kv, False, use_reentrant=False
+                )
+            else:
+                x, present = block(x, cos, sin, past_kv=past_kv, use_cache=use_cache)
             if use_cache:
                 presents.append(present)
 
