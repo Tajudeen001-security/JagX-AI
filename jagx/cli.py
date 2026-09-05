@@ -249,6 +249,40 @@ def cmd_train_e2e(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_inspect(args: argparse.Namespace) -> int:
+    """Show scale math for a config without requiring trained weights."""
+    from model import ModelConfig
+
+    path = Path(args.config)
+    if not path.is_file():
+        print(f"config not found: {path}", file=sys.stderr)
+        return 1
+    cfg = ModelConfig.from_dict(json.loads(path.read_text(encoding="utf-8"))).validate()
+    estimated = cfg.estimated_parameters()
+    payload = {
+        "config": str(path),
+        "vocab_size": cfg.vocab_size,
+        "max_seq_len": cfg.max_seq_len,
+        "d_model": cfg.d_model,
+        "n_layers": cfg.n_layers,
+        "n_heads": cfg.n_heads,
+        "n_kv_heads": cfg.n_kv_heads,
+        "d_ff": cfg.d_ff,
+        "estimated_parameters": estimated,
+        "estimated_parameters_millions": round(estimated / 1e6, 2),
+        "recommended_pretrain_tokens": cfg.recommended_pretrain_tokens(),
+        "use_sdpa": cfg.use_sdpa,
+        "gradient_checkpointing": cfg.gradient_checkpointing,
+    }
+    if args.instantiate:
+        from model import JagXTransformer
+
+        model = JagXTransformer(cfg)
+        payload["instantiated_parameters"] = model.parameter_count()
+    print(json.dumps(payload, indent=2))
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(prog="jagx", description="JagX AI — local agent + training platform")
     sub = p.add_subparsers(dest="command", required=True)
@@ -317,6 +351,11 @@ def build_parser() -> argparse.ArgumentParser:
     te.add_argument("--device")
     te.add_argument("--prompt", default="The agent plans")
     te.set_defaults(func=cmd_train_e2e)
+
+    ins = sub.add_parser("inspect", help="Print parameter count and token budget for a model config")
+    ins.add_argument("--config", default="configs/kaggle.json", help="Path to a JSON ModelConfig")
+    ins.add_argument("--instantiate", action="store_true", help="Build the module and count real parameters")
+    ins.set_defaults(func=cmd_inspect)
 
     return p
 
