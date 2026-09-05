@@ -131,7 +131,17 @@ def run_training(root: Path, train_jsonl: Path, val_jsonl: Path, tokenizer_path:
     except StopIteration as exc:
         raise RuntimeError("Prepared corpus produced zero training batches. Increase rows or reduce --seq-len.") from exc
     print(f"Batch check OK: shape={tuple(first_batch['input_ids'].shape)} tokens={first_batch['input_ids'].numel():,}; accepted={stats.accepted:,}")
-    model_config = ModelConfig(vocab_size=tokenizer.vocab_size, max_seq_len=args.context_length, d_model=args.hidden_size, n_layers=args.layers, n_heads=args.heads)
+    kv_heads = max(1, args.heads // 2)
+    model_config = ModelConfig(
+        vocab_size=tokenizer.vocab_size,
+        max_seq_len=args.context_length,
+        d_model=args.hidden_size,
+        n_layers=args.layers,
+        n_heads=args.heads,
+        n_kv_heads=kv_heads,
+        use_sdpa=True,
+        gradient_checkpointing=args.hidden_size >= 768,
+    )
     out = root / "kaggle_checkpoints"
     resume = newest_checkpoint(out) if args.resume else None
     if resume:
@@ -148,16 +158,16 @@ def main() -> None:
     parser.add_argument("--source", choices=("oasst1", "fineweb2", "dolma"), default=os.environ.get("JAGX_SOURCE", "oasst1"))
     parser.add_argument("--config", default=os.environ.get("JAGX_DATASET_CONFIG"))
     parser.add_argument("--split", default=os.environ.get("JAGX_DATASET_SPLIT", "train"))
-    parser.add_argument("--rows", type=int, default=int(os.environ.get("JAGX_ROWS", "50000")))
-    parser.add_argument("--steps", type=int, default=int(os.environ.get("JAGX_STEPS", "1000")))
+    parser.add_argument("--rows", type=int, default=int(os.environ.get("JAGX_ROWS", "80000")))
+    parser.add_argument("--steps", type=int, default=int(os.environ.get("JAGX_STEPS", "3000")))
     parser.add_argument("--seq-len", type=int, default=int(os.environ.get("JAGX_SEQ_LEN", "512")))
     parser.add_argument("--batch-size", type=int, default=int(os.environ.get("JAGX_BATCH_SIZE", "4")))
     parser.add_argument("--grad-accum", type=int, default=int(os.environ.get("JAGX_GRAD_ACCUM", "8")))
-    parser.add_argument("--vocab-size", type=int, default=32768)
-    parser.add_argument("--context-length", type=int, default=2048)
-    parser.add_argument("--hidden-size", type=int, default=384)
-    parser.add_argument("--layers", type=int, default=6)
-    parser.add_argument("--heads", type=int, default=6)
+    parser.add_argument("--vocab-size", type=int, default=int(os.environ.get("JAGX_VOCAB", "32000")))
+    parser.add_argument("--context-length", type=int, default=int(os.environ.get("JAGX_CONTEXT", "1024")))
+    parser.add_argument("--hidden-size", type=int, default=int(os.environ.get("JAGX_HIDDEN", "512")))
+    parser.add_argument("--layers", type=int, default=int(os.environ.get("JAGX_LAYERS", "8")))
+    parser.add_argument("--heads", type=int, default=int(os.environ.get("JAGX_HEADS", "8")))
     parser.add_argument("--lr", type=float, default=3e-4)
     parser.add_argument("--weight-decay", type=float, default=0.1)
     parser.add_argument("--warmup-steps", type=int, default=int(os.environ.get("JAGX_WARMUP", "100")))
