@@ -48,10 +48,9 @@ def token_stream(examples: Iterable[TrainingExample], tokenizer: JagXTokenizer) 
         yield tokenizer.eos_token_id
 
 
-def packed_batches(
+def _iter_packed_batches(
     examples: Iterable[TrainingExample], tokenizer: JagXTokenizer, config: PretrainingConfig
 ) -> Iterator[dict[str, torch.Tensor]]:
-    """Pack documents into fixed-length next-token-prediction batches."""
     cfg = config.validate()
     buffer: list[int] = []
     batch: list[list[int]] = []
@@ -77,6 +76,31 @@ def packed_batches(
         labels = values.clone()
         labels[values == pad] = -100
         yield {"input_ids": values, "labels": labels}
+
+
+class PackedBatchIterable:
+    """Re-iterable packed-batch stream for multi-epoch training.
+
+    The trainer restarts its input iterable when it reaches the end. A raw
+    generator cannot be restarted, which caused long runs to fail with
+    ``training batches are empty`` after the first pass. This wrapper rebuilds
+    the lightweight iterator without materializing all batches in RAM.
+    """
+
+    def __init__(self, examples: Iterable[TrainingExample], tokenizer: JagXTokenizer, config: PretrainingConfig):
+        self.examples = examples
+        self.tokenizer = tokenizer
+        self.config = config.validate()
+
+    def __iter__(self) -> Iterator[dict[str, torch.Tensor]]:
+        return _iter_packed_batches(self.examples, self.tokenizer, self.config)
+
+
+def packed_batches(
+    examples: Iterable[TrainingExample], tokenizer: JagXTokenizer, config: PretrainingConfig
+) -> PackedBatchIterable:
+    """Return a re-iterable stream of fixed-length next-token batches."""
+    return PackedBatchIterable(examples, tokenizer, config)
 
 
 def prepare_examples(
