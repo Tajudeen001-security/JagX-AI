@@ -26,6 +26,8 @@ class ModelConfig:
     use_rms_norm: bool = True
     rms_norm_eps: float = 1e-6
     initializer_range: float = 0.02
+    use_sdpa: bool = True
+    gradient_checkpointing: bool = False
 
     def __post_init__(self) -> None:
         if self.n_kv_heads is None:
@@ -51,6 +53,26 @@ class ModelConfig:
         if self.d_ff < self.d_model:
             raise ValueError("d_ff should be >= d_model")
         return self
+
+    def estimated_parameters(self) -> int:
+        """Closed-form parameter count so large configs can be inspected without allocating GPU memory."""
+        self.validate()
+        d = self.d_model
+        heads = self.n_heads
+        kv = int(self.n_kv_heads)
+        ff = int(self.d_ff)
+        head_dim = d // heads
+        embed = self.vocab_size * d
+        attn = d * heads * head_dim + 2 * d * kv * head_dim + d * d
+        mlp = (3 if self.use_swiglu else 2) * d * ff
+        norms = (2 * self.n_layers + 1) * d
+        layers = self.n_layers * (attn + mlp)
+        output = 0 if self.tie_embeddings else self.vocab_size * d
+        return embed + layers + norms + output
+
+    def recommended_pretrain_tokens(self) -> int:
+        """Chinchilla-style ~20 tokens per parameter."""
+        return 20 * self.estimated_parameters()
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
