@@ -12,7 +12,7 @@ from model import JagXTransformer, ModelConfig
 from tokenizer import JagXTokenizer
 
 from .data_contract import TrainingExample
-from .pretraining import PretrainingConfig, packed_batches, prepare_examples
+from .pretraining import PretrainingConfig, build_optimizer, build_scheduler, packed_batches, prepare_examples
 from .seed import set_seed
 from .trainer import CausalLMTrainer, TrainerConfig
 
@@ -66,10 +66,7 @@ def evaluate_loss(model: torch.nn.Module, batches: Iterable[dict], device: torch
     count = 0
     with torch.no_grad():
         for batch in batches:
-            moved = {
-                key: value.to(device) if torch.is_tensor(value) else value
-                for key, value in batch.items()
-            }
+            moved = {key: value.to(device) if torch.is_tensor(value) else value for key, value in batch.items()}
             output = model(**moved)
             if isinstance(output, (tuple, list)):
                 loss = output[1]
@@ -77,10 +74,9 @@ def evaluate_loss(model: torch.nn.Module, batches: Iterable[dict], device: torch
                 loss = output["loss"]
             else:
                 loss = output.loss
-            value = float(loss.detach().item())
             if not torch.isfinite(loss):
                 raise FloatingPointError("non-finite validation loss")
-            total += value
+            total += float(loss.detach().item())
             count += 1
             if count >= max_batches:
                 break
@@ -105,7 +101,8 @@ def run_training(
     set_seed(cfg.seed)
     tokenizer = JagXTokenizer.from_pretrained(tokenizer_path)
     model = build_model(model_config, tokenizer)
-    optimizer = torch.optim.AdamW(model.parameters(), lr=cfg.learning_rate, weight_decay=cfg.weight_decay)
+    optimizer = build_optimizer(model, cfg)
+    scheduler = build_scheduler(optimizer, cfg)
     target_device = device or ("cuda" if torch.cuda.is_available() else "cpu")
     trainer_config = TrainerConfig(
         max_steps=cfg.max_steps,
@@ -114,7 +111,13 @@ def run_training(
         device=device,
         use_amp=target_device in {"cuda", "mps"},
     )
-    trainer = CausalLMTrainer(model, optimizer, config=trainer_config, resume_from=str(resume_from) if resume_from else None)
+    trainer = CausalLMTrainer(
+        model,
+        optimizer,
+        scheduler=scheduler,
+        config=trainer_config,
+        resume_from=str(resume_from) if resume_from else None,
+    )
 
     examples = load_examples(data_path)
     train_examples, validation_examples = [], []
@@ -128,7 +131,13 @@ def run_training(
         raise ValueError("no training examples remain after filtering")
 
     metrics = trainer.train(packed_batches(train_examples, tokenizer, cfg))
-    result = {"train": metrics, "step": trainer.step, "model_config": model_config.to_dict(), "pretraining_config": asdict(cfg)}
+    result = {
+        "train": metrics,
+        "step": trainer.step,
+        "model_config": model_config.to_dict(),
+        "pretraining_config": asdict(cfg),
+        "learning_rate": optimizer.param_groups[0]["lr"],
+    }
 
     if validation_data_path is not None:
         validation_examples = load_examples(validation_data_path)
@@ -155,6 +164,8 @@ def main() -> None:
     parser.add_argument("--seq-len", type=int, default=512)
     parser.add_argument("--lr", type=float, default=3e-4)
     parser.add_argument("--weight-decay", type=float, default=0.1)
+    parser.add_argument("--warmup-steps", type=int, default=0)
+    parser.add_argument("--min-lr-ratio", type=float, default=0.1)
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--vocab-size", type=int, default=32768)
     parser.add_argument("--context-length", type=int, default=2048)
@@ -181,6 +192,8 @@ def main() -> None:
         grad_accum=args.grad_accum,
         learning_rate=args.lr,
         weight_decay=args.weight_decay,
+        warmup_steps=args.warmup_steps,
+        min_lr_ratio=args.min_lr_ratio,
         seed=args.seed,
     )
     result = run_training(
