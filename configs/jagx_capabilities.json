@@ -1,0 +1,33 @@
+{
+  "schema_version": "1.0",
+  "default_response_language": "en",
+  "language_target": {
+    "african_languages": 2000,
+    "mode": "progressive_support",
+    "tiers": ["full", "developing", "experimental", "speech", "data_target"]
+  },
+  "modalities": ["text", "speech", "vision", "image", "audio", "animation", "video", "documents", "code"],
+  "creation": {
+    "web": true,
+    "mobile": true,
+    "desktop": true,
+    "games": true,
+    "animations": true,
+    "movies": true,
+    "documents": true
+  },
+  "engine_adapters": ["godot", "unreal", "unity", "generic_cli"],
+  "agent_tools": ["filesystem", "terminal", "browser", "git", "build", "test", "package"],
+  "local_domains": ["agriculture", "health_information", "education", "infrastructure", "public_services", "small_business", "climate", "culture", "history"],
+  "computer_control": {
+    "enabled": true,
+    "require_user_approval_for": ["external_side_effects", "destructive_filesystem", "credential_access", "publishing", "payments"],
+    "default": "sandboxed"
+  },
+  "scaling": {
+    "initial_goal": "millions_of_parameters",
+    "future_goal": "billions_and_beyond",
+    "architecture": "scale_up_without_changing_public_interfaces"
+  },
+  "principle": "A capability is only marked supported after implementation and evaluation; configuration alone does not create capability."
+}
