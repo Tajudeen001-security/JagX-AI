@@ -9,7 +9,7 @@ Scale configs now go from a 10M smoke model to ~3B (`configs/kaggle.json` throug
 ## Status
 
 | Area | State |
-|------|--------|
+|------|-------|
 | Transformer (RoPE, RMSNorm, SwiGLU, GQA, KV-cache, SDPA) | Real + tested |
 | Tokenizer BPE | Real + tested |
 | Training + checkpoint resume | Real + tested |
@@ -19,12 +19,29 @@ Scale configs now go from a 10M smoke model to ~3B (`configs/kaggle.json` throug
 | Agent TaskDAG | Real + tested |
 | Sandbox + coding write→test | Real + tested |
 | Memory | Real + tested |
+| Task experience learning store | Real + tested |
+| Bounded computer-control contract | Real + tested; requires local host adapter |
+| Vision | Trainable image encoder + perception contracts |
+| Multilingual routing | Real routing contract; language quality depends on trained data/models |
+| Vehicle autonomy | Safety-first simulation/planning contracts; **not road-ready** |
 | Gaming instruction seed corpus | Real MIT seed + collector |
 | Local API | Real; generate needs checkpoint |
 | Paper trading | Real paper-only |
 | Media / multimodal quality | Architecture present; needs trained media weights |
 
-**Not claimed:** frontier chat quality without training.
+**Not claimed:** frontier chat quality, universal African-language fluency, or production autonomous driving without the required trained models, evaluation and safety validation.
+
+## New agent architecture
+
+JagX now separates the model from the capabilities around it:
+
+- `agent/computer_control.py` — explicit user-granted screen, cursor, keyboard, terminal and filesystem control contracts.
+- `memory/learning.py` — persistent task experience that can be retrieved without retraining model weights after every task.
+- `multimodal/perception.py` — camera/screen/video perception adapter contracts.
+- `multilingual/router.py` — automatic response-language routing with English fallback.
+- `autonomy/vehicle.py` — perception-to-planning interfaces and an independent safety envelope for future simulation/robotics work.
+
+Computer access is deny-by-default at the integration boundary. `FULL_CONTROL` is available only when the host application explicitly grants it, and destructive operations still request confirmation by default.
 
 ## Quick start
 
