@@ -1,0 +1,25 @@
+{
+  "schema_version": "1.0",
+  "name": "JagX capability graph",
+  "default_language": "en",
+  "language_target": 2000,
+  "capabilities": {
+    "multilingual_text": {"enabled": true, "target_languages": 2000},
+    "speech": {"enabled": true, "modes": ["asr", "tts", "language_detection"]},
+    "vision": {"enabled": true, "modes": ["image_understanding", "document_understanding"]},
+    "web": {"enabled": true, "modes": ["search", "fetch", "research"]},
+    "coding": {"enabled": true, "modes": ["generate", "edit", "debug", "test", "build"]},
+    "software_projects": {"enabled": true, "targets": ["web", "android", "ios", "desktop"]},
+    "game_development": {"enabled": true, "engines": ["godot", "unreal", "unity"], "modes": ["scaffold", "edit", "run", "test", "export"]},
+    "media": {"enabled": true, "targets": ["image", "audio", "animation", "video"]},
+    "documents": {"enabled": true, "formats": ["pdf", "docx", "epub", "txt", "rtf", "md", "csv", "xlsx"]},
+    "computer_agent": {"enabled": true, "permission_model": "explicit_user_approval", "modes": ["terminal", "filesystem", "applications", "browser"]},
+    "local_problem_solving": {"enabled": true, "domains": ["agriculture", "education", "health_information", "infrastructure", "public_services", "business", "climate", "culture"]},
+    "memory": {"enabled": true, "modes": ["session", "long_term", "retrieval"]}
+  },
+  "scaling": {
+    "parameter_target_current": "millions",
+    "parameter_target_future": "billions+",
+    "requirements": ["configurable_width", "configurable_depth", "checkpoint_compatibility", "mixed_precision", "gradient_accumulation", "distributed_training_ready"]
+  }
+}
