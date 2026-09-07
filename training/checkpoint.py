@@ -9,11 +9,17 @@ from typing import Any
 import torch
 
 
-CHECKPOINT_FORMAT_VERSION = 2
+CHECKPOINT_FORMAT_VERSION = 3
+
+
+def _unwrap_model(model: Any) -> Any:
+    """Return the underlying model for wrappers such as DataParallel."""
+    return getattr(model, "module", model)
 
 
 def _model_config(model: Any) -> dict[str, Any] | None:
     """Return a serializable model config when the model exposes one."""
+    model = _unwrap_model(model)
     config = getattr(model, "cfg", None)
     if config is None:
         config = getattr(model, "config", None)
@@ -80,7 +86,6 @@ def _restore_rng_state(state: Any) -> None:
         except (ImportError, KeyError, TypeError, ValueError):
             pass
     elif numpy_state is not None:
-        # Legacy v2 checkpoints stored NumPy's raw tuple; keep compatibility.
         try:
             import numpy as np
             np.random.set_state(numpy_state)
@@ -101,8 +106,8 @@ def save_checkpoint(
 ) -> None:
     """Atomically persist all state required to resume training.
 
-    Current checkpoints include the model configuration and RNG state so
-    training can continue reproducibly without external configuration files.
+    Model weights are stored from the underlying model so checkpoints work
+    consistently on one GPU and multiple GPUs.
     """
     if step < 0:
         raise ValueError("step must be non-negative")
@@ -112,10 +117,11 @@ def save_checkpoint(
     config = _model_config(model)
     if config is not None and "model_config" not in metadata_value:
         metadata_value["model_config"] = config
+    base_model = _unwrap_model(model)
     payload = {
         "format_version": CHECKPOINT_FORMAT_VERSION,
         "step": int(step),
-        "model": model.state_dict(),
+        "model": base_model.state_dict(),
         "config": config,
         "optimizer": optimizer.state_dict(),
         "scheduler": scheduler.state_dict() if scheduler is not None else None,
@@ -159,7 +165,7 @@ def load_checkpoint(
     step = int(state["step"])
     if step < 0:
         raise ValueError("invalid JagX checkpoint: step must be non-negative")
-    model.load_state_dict(state["model"])
+    _unwrap_model(model).load_state_dict(state["model"])
     if optimizer is not None and state.get("optimizer") is not None:
         optimizer.load_state_dict(state["optimizer"])
     if scheduler is not None and state.get("scheduler") is not None:
