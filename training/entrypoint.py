@@ -96,14 +96,25 @@ def run_training(
     validation_data_path: str | Path | None = None,
     device: str | None = None,
 ) -> dict:
-    """Run the complete local training pipeline and optionally resume a checkpoint."""
+    """Run the complete local training pipeline and optionally resume a checkpoint.
+
+    When multiple CUDA devices are visible, use PyTorch DataParallel automatically.
+    This keeps the Kaggle launcher simple while using all GPUs exposed by the session.
+    """
     cfg = pretraining_config.validate()
     set_seed(cfg.seed)
     tokenizer = JagXTokenizer.from_pretrained(tokenizer_path)
+    target_device = device or ("cuda" if torch.cuda.is_available() else "cpu")
     model = build_model(model_config, tokenizer)
+
+    gpu_count = torch.cuda.device_count() if target_device == "cuda" else 0
+    use_multi_gpu = gpu_count > 1
+    if use_multi_gpu:
+        print(f"Using DataParallel across {gpu_count} CUDA GPUs")
+        model = torch.nn.DataParallel(model, device_ids=list(range(gpu_count)))
+
     optimizer = build_optimizer(model, cfg)
     scheduler = build_scheduler(optimizer, cfg)
-    target_device = device or ("cuda" if torch.cuda.is_available() else "cpu")
     trainer_config = TrainerConfig(
         max_steps=cfg.max_steps,
         grad_accum=cfg.grad_accum,
@@ -137,6 +148,8 @@ def run_training(
         "model_config": model_config.to_dict(),
         "pretraining_config": asdict(cfg),
         "learning_rate": optimizer.param_groups[0]["lr"],
+        "gpu_count": gpu_count,
+        "multi_gpu": use_multi_gpu,
     }
 
     if validation_data_path is not None:
