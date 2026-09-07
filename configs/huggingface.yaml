@@ -1,0 +1,29 @@
+# Hugging Face integration plan for JagX.
+# Secrets/tokens must be supplied through the runtime environment, never committed.
+hub:
+  enabled: true
+  model_namespace: jagwax
+  upload_checkpoints: true
+  upload_datasets: true
+  private_by_default: true
+
+artifacts:
+  base_models: true
+  adapters: true
+  tokenizers: true
+  evaluation_reports: true
+  dataset_cards: true
+
+workflow:
+  1: discover_open_models_and_datasets
+  2: evaluate_license_and_data_provenance
+  3: benchmark_before_adaptation
+  4: train_small_adapters_or_finetunes
+  5: evaluate_african_language_and_task_coverage
+  6: publish_versioned_artifacts
+  7: promote_only_validated_checkpoints
+
+security:
+  never_commit_hf_tokens: true
+  prefer_environment_secret: true
+  avoid_private_data_without_explicit_consent: true
