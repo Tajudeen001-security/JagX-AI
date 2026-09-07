@@ -1,0 +1,35 @@
+# JagX scalable model/training profiles.
+# Keep the architecture configurable so the same code can move from millions
+# of parameters to billion-scale models when hardware permits.
+profiles:
+  kaggle_t4_small:
+    vocab_size: 32000
+    context_length: 1024
+    hidden_size: 512
+    layers: 8
+    heads: 8
+    kv_heads: 4
+    precision: fp16
+    gradient_checkpointing: false
+  kaggle_t4_medium:
+    vocab_size: 64000
+    context_length: 2048
+    hidden_size: 768
+    layers: 12
+    heads: 12
+    kv_heads: 6
+    precision: fp16
+    gradient_checkpointing: true
+  billion_scale:
+    vocab_size: 65536
+    context_length: 4096
+    hidden_size: 2048
+    layers: 24
+    heads: 16
+    kv_heads: 8
+    precision: bf16_or_fp16
+    gradient_checkpointing: true
+
+# Training is deliberately data/compute gated. A larger profile must not be
+# selected unless the available accelerator memory and throughput have been
+# benchmarked first.
