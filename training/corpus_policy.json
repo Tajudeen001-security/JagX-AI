@@ -1,0 +1,22 @@
+{
+  "version": "1.0",
+  "objective": "Build a balanced, traceable multilingual corpus for JagX foundation and instruction training.",
+  "language_policy": {
+    "default": "English",
+    "response": "follow_user_language_when_requested_or_detected",
+    "african_target": 2000,
+    "never_fabricate_low_resource_data": true,
+    "per_language_metrics_required": true
+  },
+  "data_mix": {
+    "general_text": 0.45,
+    "instruction_dialogue": 0.20,
+    "african_language_text": 0.20,
+    "local_domain_knowledge": 0.10,
+    "code": 0.05
+  },
+  "local_domains": ["agriculture", "health_information", "education", "infrastructure", "public_services", "business", "climate", "culture", "history"],
+  "quality": ["license_check", "language_id", "deduplication", "toxicity_filter", "pii_filter", "quality_score", "provenance"],
+  "evaluation": ["language_comprehension", "generation", "translation", "instruction_following", "code_generation", "local_domain_accuracy", "safety", "speech_asr", "speech_tts"],
+  "training_rule": "Do not claim native or speech support for a language until its evaluation threshold is met."
+}
