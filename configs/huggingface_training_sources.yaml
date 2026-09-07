@@ -1,0 +1,27 @@
+# Hugging Face sources for JagX training.
+# These are source references only; Kaggle downloads them during preprocessing.
+# Keep licensing/terms metadata and run dataset-quality checks before training.
+
+sources:
+  general_dialogue:
+    - HuggingFaceH4/ultrachat_200k
+    - OpenAssistant/oasst1
+  African_language_discovery:
+    - masakhane/african_language_datasets
+  multilingual:
+    - google/xtreme
+
+training_policy:
+  - deduplicate examples across sources
+  - preserve source/license metadata
+  - filter malformed and unsafe records
+  - stratify African-language samples rather than letting English dominate
+  - keep validation data isolated from training
+  - evaluate each supported language separately
+  - never publish private/user-provided training data without permission
+
+artifact_plan:
+  local_cache: data/hf_cache
+  checkpoints: artifacts/checkpoints
+  tokenizer: artifacts/kaggle_tokenizer
+  manifest: artifacts/training_manifest.json
