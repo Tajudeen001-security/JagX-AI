@@ -1,0 +1,38 @@
+# JagX flagship scaling blueprint.
+# This is an architecture/configuration target, NOT a claim that 200B parameters
+# have already been trained. Training must be staged across suitable compute.
+model:
+  family: jagx-moe
+  target_total_parameters: 220000000000
+  architecture: sparse_mixture_of_experts
+  active_experts_per_token: 8
+  expert_count: 64
+  hidden_size: 8192
+  layers: 80
+  attention_heads: 64
+  context_length: 32768
+  vocab_size: 256000
+  multimodal: true
+
+capabilities:
+  text: true
+  vision: true
+  audio: true
+  african_languages: true
+  coding: true
+  web_tools: true
+  computer_use: true
+  game_agent: true
+  robotics_research: true
+
+training:
+  strategy: staged_pretraining_then_instruction_then_preference
+  checkpointing: resumable
+  distributed_backend: torchrun
+  mixed_precision: bf16
+  tensor_parallelism: required
+  pipeline_parallelism: recommended
+  expert_parallelism: required
+
+# Free Kaggle T4 sessions remain useful for small-model experiments,
+# tokenizer/data validation, adapters and evaluation—not full 220B pretraining.
