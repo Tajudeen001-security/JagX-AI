@@ -1,0 +1,31 @@
+{
+  "version": "0.1",
+  "default_language": "en",
+  "language_target": {
+    "scope": "African languages",
+    "target_count": 2000,
+    "support_policy": "progressive_verified_support"
+  },
+  "capabilities": {
+    "text": ["chat", "reasoning", "translation", "summarization", "document_generation"],
+    "speech": ["speech_to_text", "text_to_speech", "language_detection", "language_switching"],
+    "vision": ["image_understanding", "document_understanding"],
+    "web": ["research", "retrieval", "source_citation"],
+    "software": ["web_apps", "mobile_apps", "desktop_apps", "api_services", "code_review", "debugging", "testing", "packaging"],
+    "game_dev": ["godot", "unreal_engine", "unity"],
+    "media": ["images", "audio", "animation", "video_storyboarding"],
+    "computer_agent": ["terminal", "filesystem", "processes", "browser", "developer_tools"],
+    "local_domains": ["agriculture", "education", "health_information", "infrastructure", "public_services", "business", "climate", "culture", "history"]
+  },
+  "execution_policy": {
+    "read_only": "allow",
+    "workspace_write": "user_or_task_scoped",
+    "execute_code": "sandbox_or_explicit_approval",
+    "external_network": "tool_policy_required",
+    "destructive_actions": "explicit_confirmation"
+  },
+  "engine_contract": {
+    "required_operations": ["inspect", "scaffold", "edit", "run", "test", "debug", "export"],
+    "adapters": ["godot", "unreal_engine", "unity"]
+  }
+}
