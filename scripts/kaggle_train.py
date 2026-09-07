@@ -26,6 +26,13 @@ def ensure_repo_root() -> Path:
     root = Path(__file__).resolve().parents[1]
     if not (root / "pyproject.toml").is_file():
         raise RuntimeError(f"JagX repository root not found at {root}")
+    # When a Python file is launched as scripts/kaggle_train.py, Python puts
+    # the scripts directory first on sys.path. Add the repository root so
+    # local packages (tokenizer, model, training) always win over any package
+    # with the same name installed in the Kaggle environment.
+    root_str = str(root)
+    if root_str not in sys.path:
+        sys.path.insert(0, root_str)
     return root
 
 
@@ -99,6 +106,9 @@ def split_and_make_corpus(source: Path, root: Path, validation_fraction: float) 
 
 
 def train_tokenizer(root: Path, corpus: Path, vocab_size: int) -> Path:
+    root_str = str(root)
+    if root_str not in sys.path:
+        sys.path.insert(0, root_str)
     from tokenizer.train_tokenizer import train
     out = root / "artifacts" / "kaggle_tokenizer"
     tokenizer = train([str(corpus)], out, vocab_size=vocab_size, min_frequency=2)
@@ -112,6 +122,9 @@ def newest_checkpoint(directory: Path) -> Path | None:
 
 
 def run_training(root: Path, train_jsonl: Path, val_jsonl: Path, tokenizer_path: Path, args: argparse.Namespace) -> dict:
+    root_str = str(root)
+    if root_str not in sys.path:
+        sys.path.insert(0, root_str)
     import torch
     from model import ModelConfig
     from tokenizer import JagXTokenizer
@@ -148,6 +161,7 @@ def run_training(root: Path, train_jsonl: Path, val_jsonl: Path, tokenizer_path:
         print(f"Resuming from {resume}")
     result = run_training(train_jsonl, tokenizer_path, model_config, pre_cfg, output_dir=out, resume_from=resume, validation_data_path=val_jsonl, device="cuda")
     result["gpu"] = torch.cuda.get_device_name(0)
+    result["gpu_count"] = torch.cuda.device_count()
     result["cuda_capability"] = list(torch.cuda.get_device_capability(0))
     print(json.dumps(result, indent=2))
     return result
