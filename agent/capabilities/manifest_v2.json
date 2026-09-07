@@ -1,0 +1,23 @@
+{
+  "schema_version": "2.0",
+  "language_target": 2000,
+  "capabilities": {
+    "multilingual_text": true,
+    "multilingual_voice": true,
+    "camera_vision": true,
+    "learning_feedback": true,
+    "web_research": true,
+    "traffic_aware_navigation": true,
+    "bookings": "confirmation_required",
+    "company_contact": "confirmation_required",
+    "computer_control": "deny_by_default",
+    "games": ["godot", "unreal", "unity"],
+    "media": ["image", "audio", "animation", "video"],
+    "vehicle_ai": {
+      "stage": "simulation_hil",
+      "perception": ["camera", "objects", "lanes", "signals", "hazards"],
+      "planning": ["route", "behavior", "parking", "pickup_dropoff", "traffic_aware"],
+      "direct_real_vehicle_actuation": false
+    }
+  }
+}
