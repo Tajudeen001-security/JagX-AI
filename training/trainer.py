@@ -100,17 +100,31 @@ class CausalLMTrainer:
 
     @staticmethod
     def _loss(output: Any) -> torch.Tensor:
+        """Extract a scalar loss, including losses gathered by DataParallel.
+
+        DataParallel gathers a per-device scalar loss into a tensor with one
+        value per replica. Reduce that tensor to one scalar before finite-value
+        checking and backpropagation; otherwise ``if torch.isfinite(loss)``
+        raises an ambiguous-tensor error.
+        """
         if torch.is_tensor(output):
-            return output
-        if isinstance(output, (tuple, list)) and len(output) >= 2:
+            loss = output
+        elif isinstance(output, (tuple, list)) and len(output) >= 2:
             candidate = output[1]
             if torch.is_tensor(candidate):
-                return candidate
-        if isinstance(output, dict) and "loss" in output:
-            return output["loss"]
-        if hasattr(output, "loss"):
-            return output.loss
-        raise TypeError("model output must be a loss tensor, (logits, loss), or contain a 'loss' field")
+                loss = candidate
+            else:
+                raise TypeError("model output loss must be a tensor")
+        elif isinstance(output, dict) and "loss" in output:
+            loss = output["loss"]
+        elif hasattr(output, "loss"):
+            loss = output.loss
+        else:
+            raise TypeError("model output must be a loss tensor, (logits, loss), or contain a 'loss' field")
+
+        if loss.numel() != 1:
+            loss = loss.mean()
+        return loss
 
     @staticmethod
     def _tokens(batch: Any) -> int:
@@ -163,7 +177,5 @@ class CausalLMTrainer:
             if self.step % self.config.save_every == 0:
                 self.save()
 
-        # Always leave a resumable final checkpoint, even when max_steps is not
-        # an exact multiple of save_every.
         self.save()
         return self.metrics.snapshot()
