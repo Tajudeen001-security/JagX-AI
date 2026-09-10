@@ -62,13 +62,38 @@ def _rng_state() -> dict[str, Any]:
 
 
 def _restore_rng_state(state: Any) -> None:
-    """Restore RNG streams when present; legacy checkpoints remain supported."""
+    """Restore RNG streams when present; support weights-only and legacy checkpoints."""
     if not isinstance(state, dict):
         return
     if state.get("python") is not None:
-        random.setstate(state["python"])
+        python_state = state["python"]
+        # torch.load(weights_only=True) can materialize tuples as lists.
+        if isinstance(python_state, list):
+            python_state = tuple(python_state)
+        if isinstance(python_state, tuple) and len(python_state) == 3:
+            inner = python_state[1]
+            if isinstance(inner, list):
+                python_state = (python_state[0], tuple(inner), python_state[2])
+        try:
+            random.setstate(python_state)
+        except (TypeError, ValueError):
+            pass
     if state.get("torch") is not None:
-        torch.set_rng_state(state["torch"])
+        torch_state = state["torch"]
+        # weights_only=True may return the RNG bytes as a list rather than a
+        # torch.ByteTensor. torch.set_rng_state requires a ByteTensor.
+        if not torch.is_tensor(torch_state):
+            try:
+                torch_state = torch.tensor(torch_state, dtype=torch.uint8)
+            except (TypeError, ValueError):
+                torch_state = None
+        elif torch_state.dtype != torch.uint8:
+            torch_state = torch_state.to(dtype=torch.uint8)
+        if torch_state is not None:
+            try:
+                torch.set_rng_state(torch_state.cpu())
+            except (RuntimeError, TypeError, ValueError):
+                pass
     numpy_state = state.get("numpy")
     if isinstance(numpy_state, dict):
         try:
@@ -92,7 +117,17 @@ def _restore_rng_state(state: Any) -> None:
         except (ImportError, TypeError, ValueError):
             pass
     if state.get("cuda") is not None and torch.cuda.is_available():
-        torch.cuda.set_rng_state_all(state["cuda"])
+        cuda_state = state["cuda"]
+        if isinstance(cuda_state, list):
+            try:
+                cuda_state = [s if torch.is_tensor(s) else torch.tensor(s, dtype=torch.uint8) for s in cuda_state]
+            except (TypeError, ValueError):
+                cuda_state = None
+        if cuda_state is not None:
+            try:
+                torch.cuda.set_rng_state_all(cuda_state)
+            except (RuntimeError, TypeError, ValueError):
+                pass
 
 
 def save_checkpoint(
