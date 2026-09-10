@@ -58,7 +58,12 @@ def build_model(model_config: ModelConfig, tokenizer: JagXTokenizer) -> JagXTran
 
 
 def evaluate_loss(model: torch.nn.Module, batches: Iterable[dict], device: torch.device, max_batches: int = 32) -> float:
-    """Compute mean finite validation loss without changing model weights."""
+    """Compute mean finite validation loss without changing model weights.
+
+    When the model is wrapped in DataParallel, a scalar loss from each GPU is
+    gathered into a one-dimensional tensor. Reduce that tensor to one scalar
+    before finite-value checking and converting it to a Python float.
+    """
     if max_batches < 1:
         raise ValueError("max_batches must be positive")
     model.eval()
@@ -74,7 +79,9 @@ def evaluate_loss(model: torch.nn.Module, batches: Iterable[dict], device: torch
                 loss = output["loss"]
             else:
                 loss = output.loss
-            if not torch.isfinite(loss):
+            if loss.numel() != 1:
+                loss = loss.mean()
+            if not torch.isfinite(loss).all():
                 raise FloatingPointError("non-finite validation loss")
             total += float(loss.detach().item())
             count += 1
