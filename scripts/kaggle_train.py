@@ -1,10 +1,5 @@
 #!/usr/bin/env python3
-"""Kaggle-ready end-to-end JagX pretraining launcher.
-
-Downloads an approved open corpus, creates deterministic train/validation
-splits, trains the native tokenizer, validates packed batches, and runs
-resumable CUDA pretraining. Raw data and checkpoints stay outside Git history.
-"""
+"""Kaggle-ready end-to-end JagX pretraining launcher."""
 from __future__ import annotations
 
 import argparse
@@ -26,10 +21,6 @@ def ensure_repo_root() -> Path:
     root = Path(__file__).resolve().parents[1]
     if not (root / "pyproject.toml").is_file():
         raise RuntimeError(f"JagX repository root not found at {root}")
-    # When a Python file is launched as scripts/kaggle_train.py, Python puts
-    # the scripts directory first on sys.path. Add the repository root so
-    # local packages (tokenizer, model, training) always win over any package
-    # with the same name installed in the Kaggle environment.
     root_str = str(root)
     if root_str not in sys.path:
         sys.path.insert(0, root_str)
@@ -38,18 +29,13 @@ def ensure_repo_root() -> Path:
 
 def fetch_source(root: Path, source: str, rows: int, config: str | None, split: str) -> Path:
     from datasets import load_dataset
-
     raw = root / "data" / "raw"
     raw.mkdir(parents=True, exist_ok=True)
     suffix = f"-{config}" if config else ""
     out = raw / f"{source}{suffix}-{split}-{rows}.jsonl"
     if out.is_file() and out.stat().st_size > 100:
         return out
-    repos = {
-        "oasst1": ("OpenAssistant/oasst1", "Apache-2.0"),
-        "fineweb2": ("HuggingFaceFW/fineweb-2", "ODC-By"),
-        "dolma": ("allenai/dolma", "ODC-By"),
-    }
+    repos = {"oasst1": ("OpenAssistant/oasst1", "Apache-2.0"), "fineweb2": ("HuggingFaceFW/fineweb-2", "ODC-By"), "dolma": ("allenai/dolma", "ODC-By")}
     if source not in repos:
         raise ValueError(f"unsupported source: {source}")
     repo, license_name = repos[source]
@@ -64,11 +50,7 @@ def fetch_source(root: Path, source: str, rows: int, config: str | None, split: 
             text = str(text or "").strip()
             if not text:
                 continue
-            handle.write(json.dumps({
-                "id": f"{source}:{count}", "text": text, "source": source,
-                "license": license_name, "language": row.get("lang") or row.get("language") or "und",
-                "domain": "instruction" if source == "oasst1" else "general", "quality": 1.0, "split": "train",
-            }, ensure_ascii=False) + "\n")
+            handle.write(json.dumps({"id": f"{source}:{count}", "text": text, "source": source, "license": license_name, "language": row.get("lang") or row.get("language") or "und", "domain": "instruction" if source == "oasst1" else "general", "quality": 1.0, "split": "train"}, ensure_ascii=False) + "\n")
             count += 1
             if count >= rows:
                 break
@@ -106,9 +88,8 @@ def split_and_make_corpus(source: Path, root: Path, validation_fraction: float) 
 
 
 def train_tokenizer(root: Path, corpus: Path, vocab_size: int) -> Path:
-    root_str = str(root)
-    if root_str not in sys.path:
-        sys.path.insert(0, root_str)
+    if str(root) not in sys.path:
+        sys.path.insert(0, str(root))
     from tokenizer.train_tokenizer import train
     out = root / "artifacts" / "kaggle_tokenizer"
     tokenizer = train([str(corpus)], out, vocab_size=vocab_size, min_frequency=2)
@@ -122,9 +103,8 @@ def newest_checkpoint(directory: Path) -> Path | None:
 
 
 def run_training(root: Path, train_jsonl: Path, val_jsonl: Path, tokenizer_path: Path, args: argparse.Namespace) -> dict:
-    root_str = str(root)
-    if root_str not in sys.path:
-        sys.path.insert(0, root_str)
+    if str(root) not in sys.path:
+        sys.path.insert(0, str(root))
     import torch
     from model import ModelConfig
     from tokenizer import JagXTokenizer
@@ -136,29 +116,20 @@ def run_training(root: Path, train_jsonl: Path, val_jsonl: Path, tokenizer_path:
     tokenizer = JagXTokenizer.from_pretrained(tokenizer_path)
     examples = load_examples(train_jsonl)
     examples, stats = prepare_examples(examples, seed=args.seed)
-    pre_cfg = PretrainingConfig(seq_len=args.seq_len, batch_size=args.batch_size, max_steps=args.steps, grad_accum=args.grad_accum,
-        learning_rate=args.lr, weight_decay=args.weight_decay, warmup_steps=args.warmup_steps, min_lr_ratio=args.min_lr_ratio,
-        seed=args.seed, drop_remainder=True)
+    pre_cfg = PretrainingConfig(seq_len=args.seq_len, batch_size=args.batch_size, max_steps=args.steps, grad_accum=args.grad_accum, learning_rate=args.lr, weight_decay=args.weight_decay, warmup_steps=args.warmup_steps, min_lr_ratio=args.min_lr_ratio, seed=args.seed, drop_remainder=True)
     try:
         first_batch = next(iter(packed_batches(examples, tokenizer, pre_cfg)))
     except StopIteration as exc:
         raise RuntimeError("Prepared corpus produced zero training batches. Increase rows or reduce --seq-len.") from exc
     print(f"Batch check OK: shape={tuple(first_batch['input_ids'].shape)} tokens={first_batch['input_ids'].numel():,}; accepted={stats.accepted:,}")
     kv_heads = max(1, args.heads // 2)
-    model_config = ModelConfig(
-        vocab_size=tokenizer.vocab_size,
-        max_seq_len=args.context_length,
-        d_model=args.hidden_size,
-        n_layers=args.layers,
-        n_heads=args.heads,
-        n_kv_heads=kv_heads,
-        use_sdpa=True,
-        gradient_checkpointing=args.hidden_size >= 768,
-    )
+    model_config = ModelConfig(vocab_size=tokenizer.vocab_size, max_seq_len=args.context_length, d_model=args.hidden_size, n_layers=args.layers, n_heads=args.heads, n_kv_heads=kv_heads, use_sdpa=True, gradient_checkpointing=args.hidden_size >= 768)
     out = root / "kaggle_checkpoints"
-    resume = newest_checkpoint(out) if args.resume else None
+    resume = None if args.fresh else (newest_checkpoint(out) if args.resume else None)
     if resume:
         print(f"Resuming from {resume}")
+    elif args.fresh:
+        print("Fresh training requested: ignoring existing kaggle_checkpoints/*.pt")
     result = run_training(train_jsonl, tokenizer_path, model_config, pre_cfg, output_dir=out, resume_from=resume, validation_data_path=val_jsonl, device="cuda")
     result["gpu"] = torch.cuda.get_device_name(0)
     result["gpu_count"] = torch.cuda.device_count()
@@ -182,12 +153,13 @@ def main() -> None:
     parser.add_argument("--hidden-size", type=int, default=int(os.environ.get("JAGX_HIDDEN", "512")))
     parser.add_argument("--layers", type=int, default=int(os.environ.get("JAGX_LAYERS", "8")))
     parser.add_argument("--heads", type=int, default=int(os.environ.get("JAGX_HEADS", "8")))
-    parser.add_argument("--lr", type=float, default=3e-4)
+    parser.add_argument("--lr", type=float, default=float(os.environ.get("JAGX_LR", "1e-4")))
     parser.add_argument("--weight-decay", type=float, default=0.1)
-    parser.add_argument("--warmup-steps", type=int, default=int(os.environ.get("JAGX_WARMUP", "100")))
+    parser.add_argument("--warmup-steps", type=int, default=int(os.environ.get("JAGX_WARMUP", "500")))
     parser.add_argument("--min-lr-ratio", type=float, default=0.1)
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--resume", action="store_true")
+    parser.add_argument("--fresh", action="store_true", help="ignore existing checkpoints and start from random initialization")
     parser.add_argument("--skip-pip", action="store_true")
     args = parser.parse_args()
     if args.skip_pip:
