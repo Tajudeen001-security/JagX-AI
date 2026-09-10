@@ -62,7 +62,7 @@ def evaluate_loss(model: torch.nn.Module, batches: Iterable[dict], device: torch
 
     When the model is wrapped in DataParallel, a scalar loss from each GPU is
     gathered into a one-dimensional tensor. Reduce that tensor to one scalar
-    before finite-value checking and converting it to a Python float.
+    before finite-value checking and converting to a Python float.
     """
     if max_batches < 1:
         raise ValueError("max_batches must be positive")
@@ -91,6 +91,29 @@ def evaluate_loss(model: torch.nn.Module, batches: Iterable[dict], device: torch
     if not count:
         raise ValueError("validation set produced no batches")
     return total / count
+
+
+def _resume_lr_ratio(resume_from: str | Path | None, learning_rate: float, max_steps: int) -> tuple[int, float] | None:
+    """Return checkpoint step/LR ratio when extending a run.
+
+    Extending a completed cosine schedule must not silently raise the learning
+    rate. The returned ratio is used to hold the checkpoint LR steady while the
+    extended run proceeds. Fresh runs keep the normal cosine schedule.
+    """
+    if not resume_from:
+        return None
+    path = Path(resume_from)
+    if not path.is_file():
+        return None
+    state = torch.load(path, map_location="cpu", weights_only=True)
+    step = int(state.get("step", 0))
+    optimizer = state.get("optimizer")
+    groups = optimizer.get("param_groups", []) if isinstance(optimizer, dict) else []
+    if step >= max_steps or not groups:
+        return None
+    current_lr = float(groups[0].get("lr", learning_rate))
+    ratio = max(1e-8, current_lr / learning_rate)
+    return step, ratio
 
 
 def run_training(
@@ -122,6 +145,20 @@ def run_training(
 
     optimizer = build_optimizer(model, cfg)
     scheduler = build_scheduler(optimizer, cfg)
+
+    # If a completed run is being extended (for example 1000 -> 3000 steps),
+    # preserve the checkpoint learning rate instead of jumping back up the new
+    # cosine schedule. The checkpoint's optimizer/scheduler state is still
+    # restored normally; only the scheduler's newly-created lambda is replaced.
+    resume_schedule = _resume_lr_ratio(resume_from, cfg.learning_rate, cfg.max_steps)
+    if resume_schedule is not None:
+        resume_step, resume_ratio = resume_schedule
+        scheduler.lr_lambdas[0] = lambda _step, ratio=resume_ratio: ratio
+        print(
+            f"Extending from step {resume_step}: preserving checkpoint learning rate "
+            f"({resume_ratio:.8g} x base LR) instead of restarting the cosine schedule"
+        )
+
     trainer_config = TrainerConfig(
         max_steps=cfg.max_steps,
         grad_accum=cfg.grad_accum,
