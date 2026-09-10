@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 from dataclasses import asdict
 from pathlib import Path
 from typing import Iterable
@@ -58,12 +59,7 @@ def build_model(model_config: ModelConfig, tokenizer: JagXTokenizer) -> JagXTran
 
 
 def evaluate_loss(model: torch.nn.Module, batches: Iterable[dict], device: torch.device, max_batches: int = 32) -> float:
-    """Compute mean finite validation loss without changing model weights.
-
-    When the model is wrapped in DataParallel, a scalar loss from each GPU is
-    gathered into a one-dimensional tensor. Reduce that tensor to one scalar
-    before finite-value checking and converting to a Python float.
-    """
+    """Compute mean finite validation loss without changing model weights."""
     if max_batches < 1:
         raise ValueError("max_batches must be positive")
     model.eval()
@@ -94,12 +90,7 @@ def evaluate_loss(model: torch.nn.Module, batches: Iterable[dict], device: torch
 
 
 def _resume_lr_ratio(resume_from: str | Path | None, learning_rate: float, max_steps: int) -> tuple[int, float] | None:
-    """Return checkpoint step/LR ratio when extending a run.
-
-    Extending a completed cosine schedule must not silently raise the learning
-    rate. The returned ratio is used to hold the checkpoint LR steady while the
-    extended run proceeds. Fresh runs keep the normal cosine schedule.
-    """
+    """Return checkpoint step/LR ratio when extending a run."""
     if not resume_from:
         return None
     path = Path(resume_from)
@@ -126,10 +117,10 @@ def run_training(
     validation_data_path: str | Path | None = None,
     device: str | None = None,
 ) -> dict:
-    """Run the complete local training pipeline and optionally resume a checkpoint.
+    """Run native training with conservative CUDA defaults for reproducibility.
 
-    When multiple CUDA devices are visible, use PyTorch DataParallel automatically.
-    This keeps the Kaggle launcher simple while using all GPUs exposed by the session.
+    AMP is opt-in via JAGX_USE_AMP=1. This avoids silently training a T4 model
+    with an unsuitable reduced-precision path; the stable default is FP32.
     """
     cfg = pretraining_config.validate()
     set_seed(cfg.seed)
@@ -146,10 +137,6 @@ def run_training(
     optimizer = build_optimizer(model, cfg)
     scheduler = build_scheduler(optimizer, cfg)
 
-    # If a completed run is being extended (for example 1000 -> 3000 steps),
-    # preserve the checkpoint learning rate instead of jumping back up the new
-    # cosine schedule. The checkpoint's optimizer/scheduler state is still
-    # restored normally; only the scheduler's newly-created lambda is replaced.
     resume_schedule = _resume_lr_ratio(resume_from, cfg.learning_rate, cfg.max_steps)
     if resume_schedule is not None:
         resume_step, resume_ratio = resume_schedule
@@ -159,12 +146,18 @@ def run_training(
             f"({resume_ratio:.8g} x base LR) instead of restarting the cosine schedule"
         )
 
+    use_amp = os.environ.get("JAGX_USE_AMP", "0") == "1" if target_device == "cuda" else False
+    if use_amp:
+        print("AMP enabled by JAGX_USE_AMP=1")
+    else:
+        print("AMP disabled: using stable FP32 training")
+
     trainer_config = TrainerConfig(
         max_steps=cfg.max_steps,
         grad_accum=cfg.grad_accum,
         output_dir=str(output_dir),
         device=device,
-        use_amp=target_device in {"cuda", "mps"},
+        use_amp=use_amp,
     )
     trainer = CausalLMTrainer(
         model,
@@ -194,6 +187,7 @@ def run_training(
         "learning_rate": optimizer.param_groups[0]["lr"],
         "gpu_count": gpu_count,
         "multi_gpu": use_multi_gpu,
+        "amp": use_amp,
     }
 
     if validation_data_path is not None:
